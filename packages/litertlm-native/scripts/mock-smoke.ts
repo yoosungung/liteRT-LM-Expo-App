@@ -35,8 +35,10 @@ async function main(): Promise<void> {
   const chunks: string[] = [];
   let full = '';
   for await (const chunk of engine.sendMessage(conversationId, 'Hello mock')) {
-    chunks.push(chunk);
-    full += chunk;
+    chunks.push(chunk.delta);
+    if (chunk.kind === 'token') {
+      full += chunk.delta;
+    }
   }
 
   completeSub.remove();

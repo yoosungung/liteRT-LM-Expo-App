@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -28,40 +28,94 @@ export default function ChatScreen() {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [input, setInput] = useState('');
   const [streamingText, setStreamingText] = useState('');
+  const [streamingThinking, setStreamingThinking] = useState('');
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const approvalResolvers = useRef(new Map<string, () => void>());
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const loadSession = useCallback(async () => {
-    if (!id) {
+    if (!id || !mountedRef.current) {
       return;
     }
     const loaded = await runtime.sessionStore.getSession(id);
+    if (!mountedRef.current) {
+      return;
+    }
     setSession(loaded);
     setError(null);
     if (loaded) {
       setPreparing(true);
       try {
         await runtime.ensureConversation(loaded);
+        if (!mountedRef.current) {
+          return;
+        }
         await runtime.coordinator.onChatFocus(id);
       } catch (err) {
+        if (!mountedRef.current) {
+          return;
+        }
         const message = err instanceof Error ? err.message : 'Engine not ready';
         setError(message);
       } finally {
-        setPreparing(false);
+        if (mountedRef.current) {
+          setPreparing(false);
+        }
       }
     }
   }, [id, runtime]);
 
   useFocusEffect(
     useCallback(() => {
-      void loadSession();
+      let active = true;
+      const run = async () => {
+        if (!id) {
+          return;
+        }
+        const loaded = await runtime.sessionStore.getSession(id);
+        if (!active || !mountedRef.current) {
+          return;
+        }
+        setSession(loaded);
+        setError(null);
+        if (!loaded) {
+          return;
+        }
+        setPreparing(true);
+        try {
+          await runtime.ensureConversation(loaded);
+          if (!active || !mountedRef.current) {
+            return;
+          }
+          await runtime.coordinator.onChatFocus(id);
+        } catch (err) {
+          if (!active || !mountedRef.current) {
+            return;
+          }
+          const message = err instanceof Error ? err.message : 'Engine not ready';
+          setError(message);
+        } finally {
+          if (active && mountedRef.current) {
+            setPreparing(false);
+          }
+        }
+      };
+      void run();
       return () => {
+        active = false;
         void runtime.coordinator.onChatBlur(id ?? '');
       };
-    }, [id, loadSession, runtime]),
+    }, [id, runtime]),
   );
 
   const waitForApprovalUi = (toolCall: ToolCall, riskLevel: ToolRiskLevel) =>
@@ -86,21 +140,30 @@ export default function ChatScreen() {
     setBusy(true);
     setError(null);
     setStreamingText('');
+    setStreamingThinking('');
 
     try {
       for await (const chunk of runtime.sendUserMessage(id, input)) {
+        if (!mountedRef.current) {
+          break;
+        }
         if (chunk.type === 'token') {
           setStreamingText((prev) => prev + chunk.text);
+        } else if (chunk.type === 'thinking') {
+          setStreamingThinking((prev) => prev + chunk.text);
         } else if (chunk.type === 'tool_approval_required') {
           await waitForApprovalUi(chunk.toolCall, chunk.riskLevel);
         } else if (chunk.type === 'error') {
           setError(chunk.message);
         } else if (chunk.type === 'done') {
           setStreamingText('');
+          setStreamingThinking('');
           await loadSession();
         }
       }
-      setInput('');
+      if (mountedRef.current) {
+        setInput('');
+      }
     } finally {
       setBusy(false);
     }
@@ -124,17 +187,14 @@ export default function ChatScreen() {
     clearApprovalUi(toolCall.id);
   };
 
-  if (!session) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
   return (
     <>
-      <Stack.Screen options={{ title: session.title }} />
+      <Stack.Screen options={{ title: session?.title ?? 'Chat' }} />
+      {!session ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" />
+        </View>
+      ) : (
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -152,7 +212,11 @@ export default function ChatScreen() {
           </View>
         ) : null}
         <View style={styles.messages}>
-          <ChatMessageList messages={session.messages} streamingText={streamingText} />
+          <ChatMessageList
+            messages={session.messages}
+            streamingText={streamingText}
+            streamingThinking={streamingThinking}
+          />
         </View>
         <ChatInput
           value={input}
@@ -161,6 +225,7 @@ export default function ChatScreen() {
           disabled={busy || preparing || pendingApproval !== null}
         />
       </KeyboardAvoidingView>
+      )}
       <ToolApprovalSheet
         visible={pendingApproval !== null}
         toolCall={pendingApproval?.toolCall ?? null}

@@ -11,6 +11,7 @@ import type {
   PersistResult,
   RestoreResult,
   StreamDeltaKind,
+  StreamPart,
   ToolCall,
 } from '../LitertLm.types';
 import type { LitertLmEngine } from '../LitertLmModule';
@@ -131,8 +132,7 @@ export class MockEngine implements LitertLmEngine {
     conversationId: string,
     text: string,
     extraContext?: Record<string, unknown>,
-  ): AsyncIterable<string> {
-    void extraContext;
+  ): AsyncIterable<StreamPart> {
     this.ensureActive();
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
@@ -145,7 +145,9 @@ export class MockEngine implements LitertLmEngine {
     const automatic = conversation.automaticToolCalling !== false;
     const trigger = detectMockTool(text);
 
-    if (mock.simulateThinking) {
+    const simulateThinking =
+      extraContext?.enable_thinking === true || mock.simulateThinking === true;
+    if (simulateThinking) {
       const thinking = 'Let me think about that for a moment…';
       for await (const chunk of this.streamWithBatcher(
         thinking,
@@ -153,7 +155,7 @@ export class MockEngine implements LitertLmEngine {
         tokensPerSecond,
         'thinking',
       )) {
-        yield chunk;
+        yield { kind: 'thinking', delta: chunk };
       }
     }
 
@@ -205,7 +207,7 @@ export class MockEngine implements LitertLmEngine {
     let full = '';
     for await (const chunk of this.streamWithBatcher(response, batchConfig, tokensPerSecond, 'token')) {
       full += chunk;
-      yield chunk;
+      yield { kind: 'token', delta: chunk };
     }
 
     const message: Message = {
@@ -225,7 +227,9 @@ export class MockEngine implements LitertLmEngine {
   ): Promise<Message> {
     let content = '';
     for await (const chunk of this.sendMessage(conversationId, text, extraContext)) {
-      content += chunk;
+      if (chunk.kind === 'token') {
+        content += chunk.delta;
+      }
     }
     return {
       id: `${conversationId}-${Date.now()}`,

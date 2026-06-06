@@ -134,7 +134,9 @@ export class AgentRuntime {
     }
 
     await this.engine.approveToolCall(sessionId, toolCallId, true);
-    await this.executeAndSubmitToolResult(sessionId, gate.toolCall);
+    if (resolveEngineMode() === 'mock') {
+      await this.executeAndSubmitToolResult(sessionId, gate.toolCall);
+    }
     gate.resolve(true);
     this.approvalGates.delete(toolCallId);
   }
@@ -373,6 +375,7 @@ export class AgentRuntime {
     this.abortControllers.set(sessionId, abort);
 
     let assistantText = '';
+    let assistantThinking = '';
     const nativeTurn = this.promptEngine.toNativeUserTurn(trimmed, session.messages);
     const thinkingEnabled = await this.agentPreferences.getThinkingEnabled();
     const extraContext = this.promptEngine.buildExtraContext({ thinking: thinkingEnabled });
@@ -428,7 +431,11 @@ export class AgentRuntime {
             streamState.error = new Error('Generation aborted');
             break;
           }
-          pushChunk({ type: 'token', text: chunk });
+          if (chunk.kind === 'thinking') {
+            pushChunk({ type: 'thinking', text: chunk.delta });
+          } else {
+            pushChunk({ type: 'token', text: chunk.delta });
+          }
         }
       } catch (error) {
         streamState.error = error instanceof Error ? error : new Error(String(error));
@@ -449,6 +456,8 @@ export class AgentRuntime {
           const chunk = this.streamChunkQueue.shift()!;
           if (chunk.type === 'token') {
             assistantText += chunk.text;
+          } else if (chunk.type === 'thinking') {
+            assistantThinking += chunk.text;
           }
           yield chunk;
         }
@@ -465,6 +474,7 @@ export class AgentRuntime {
         id: `${sessionId}-assistant-${Date.now()}`,
         role: 'assistant',
         content: assistantText,
+        thinking: assistantThinking.trim() ? assistantThinking : undefined,
         timestamp: Date.now(),
       };
       await this.sessionStore.appendMessage(sessionId, assistantMessage);

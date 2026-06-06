@@ -49,6 +49,7 @@ export function defaultMockConfig(): EngineConfig {
 }
 
 export * from './LitertLm.types';
+export { serializeConversationConfig } from './conversationConfigJson';
 export type { LitertLmEngine } from './LitertLmModule';
 export { MockEngine } from './mock/MockEngine';
 export { NativeEngine } from './NativeEngine';

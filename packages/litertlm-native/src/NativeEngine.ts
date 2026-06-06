@@ -15,9 +15,11 @@ import type {
   PersistResult,
   RestoreResult,
   StreamDeltaEvent,
+  StreamPart,
   ToolApprovalRequiredEvent,
   ToolCallEvent,
 } from './LitertLm.types';
+import { serializeConversationConfig } from './conversationConfigJson';
 import type { LitertLmEngine } from './LitertLmModule';
 
 type NativeLitertLmEvents = {
@@ -35,7 +37,13 @@ declare class ExpoLitertLmModule extends NativeModule<NativeLitertLmEvents> {
   warmUp(modelPath: string, backend: string, cacheDir?: string | null): Promise<void>;
   shutdown(): Promise<void>;
   getLifecycle(): string;
-  createConversation(conversationId: string, systemInstruction?: string | null): Promise<void>;
+  createConversation(
+    conversationId: string,
+    systemInstruction?: string | null,
+    configJson?: string | null,
+  ): Promise<void>;
+  approveToolCall(conversationId: string, toolCallId: string, approved: boolean): Promise<void>;
+  rejectToolCall(conversationId: string, toolCallId: string, reason?: string | null): Promise<void>;
   closeConversation(conversationId: string): Promise<void>;
   sendMessage(
     conversationId: string,
@@ -149,7 +157,11 @@ export class NativeEngine implements LitertLmEngine {
   }
 
   async createConversation(config: ConversationConfig): Promise<void> {
-    await this.native.createConversation(config.conversationId, config.systemInstruction ?? null);
+    await this.native.createConversation(
+      config.conversationId,
+      config.systemInstruction ?? null,
+      serializeConversationConfig(config),
+    );
     this.patchStatus({ activeConversationId: config.conversationId });
   }
 
@@ -164,8 +176,8 @@ export class NativeEngine implements LitertLmEngine {
     conversationId: string,
     text: string,
     extraContext?: Record<string, unknown>,
-  ): AsyncIterable<string> {
-    const queue: string[] = [];
+  ): AsyncIterable<StreamPart> {
+    const queue: StreamPart[] = [];
     let pendingResolve: (() => void) | null = null;
     let done = false;
     let streamError: Error | null = null;
@@ -185,10 +197,10 @@ export class NativeEngine implements LitertLmEngine {
       });
 
     const deltaSub = this.native.addListener('onStreamDelta', (event: StreamDeltaEvent) => {
-        if (event.conversationId !== conversationId || event.kind !== 'token') {
+        if (event.conversationId !== conversationId) {
           return;
         }
-        queue.push(event.delta);
+        queue.push({ kind: event.kind, delta: event.delta });
         notify();
       },
     );
@@ -240,7 +252,9 @@ export class NativeEngine implements LitertLmEngine {
   ): Promise<Message> {
     let content = '';
     for await (const chunk of this.sendMessage(conversationId, text, extraContext)) {
-      content += chunk;
+      if (chunk.kind === 'token') {
+        content += chunk.delta;
+      }
     }
     return {
       id: `${conversationId}-${Date.now()}`,
@@ -255,10 +269,7 @@ export class NativeEngine implements LitertLmEngine {
     toolCallId: string,
     approved: boolean,
   ): Promise<void> {
-    void conversationId;
-    void toolCallId;
-    void approved;
-    throw new Error('NOT_IMPLEMENTED: approveToolCall (Phase 2.3)');
+    await this.native.approveToolCall(conversationId, toolCallId, approved);
   }
 
   async rejectToolCall(
@@ -266,10 +277,7 @@ export class NativeEngine implements LitertLmEngine {
     toolCallId: string,
     reason?: string,
   ): Promise<void> {
-    void conversationId;
-    void toolCallId;
-    void reason;
-    throw new Error('NOT_IMPLEMENTED: rejectToolCall (Phase 2.3)');
+    await this.native.rejectToolCall(conversationId, toolCallId, reason ?? null);
   }
 
   async submitToolResult(
@@ -280,7 +288,7 @@ export class NativeEngine implements LitertLmEngine {
     void conversationId;
     void toolCallId;
     void resultJson;
-    throw new Error('NOT_IMPLEMENTED: submitToolResult (Phase 2.2)');
+    throw new Error('NOT_IMPLEMENTED: submitToolResult (live manual mode — Phase 2.2)');
   }
 
   addListener<T extends LitertLmEventName>(

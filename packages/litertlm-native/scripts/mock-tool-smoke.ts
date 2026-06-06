@@ -24,7 +24,9 @@ async function smokeReadTool(): Promise<void> {
 
   let full = '';
   for await (const chunk of engine.sendMessage(conversationId, 'what time is it?')) {
-    full += chunk;
+    if (chunk.kind === 'token') {
+      full += chunk.delta;
+    }
   }
 
   await engine.shutdown();
@@ -56,7 +58,9 @@ async function smokeApprovalTool(): Promise<void> {
       conversationId,
       'open https://example.com please',
     )) {
-      full += chunk;
+      if (chunk.kind === 'token') {
+        full += chunk.delta;
+      }
     }
     return full;
   })();
@@ -103,7 +107,9 @@ async function smokeManualTool(): Promise<void> {
   const streamPromise = (async () => {
     let full = '';
     for await (const chunk of engine.sendMessage(conversationId, 'device info')) {
-      full += chunk;
+      if (chunk.kind === 'token') {
+        full += chunk.delta;
+      }
     }
     return full;
   })();

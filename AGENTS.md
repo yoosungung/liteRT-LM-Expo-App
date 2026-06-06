@@ -52,7 +52,9 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 1.8 | iOS Swift Engine bridge — LiteRT-LM **0.13.0** SPM + `EngineBridge` parity ✅ |
 | Phase 1 Android live E2E | **완료** — E2B download → live 채팅 → force-stop 재시작 후 히스토리 유지 (manual 2026-06-06) |
 | Phase 1.9 iOS live E2E | **완료** — Simulator → E2B download → live 채팅 → 재시작 후 히스토리 유지 (manual 2026-06-06) |
-| Phase 2 S1 | **완료** — Mock tool loop, `ToolApprovalSheet`, Settings auto/manual toggle, `pnpm litertlm-native mock-tool-smoke` |
-| Phase 2.1 native | **대기** — Kotlin/Swift `@Tool` wiring |
+| Phase 2 S1 | **완료** — Mock tool loop, approval UI, Settings toggle |
+| Phase 2 S2 | **완료** — Native `@Tool` (Kotlin/Swift), Thinking UI, Sampler settings |
+| Phase 2.1 live tool E2E | **완료** — LLM → `getCurrentTime` tool 호출 확인 (manual) |
+| Phase 2.4 Thinking UI | **완료** — `ThinkingBlock` 스트리밍·저장 표시 확인 (manual) |
 
-다음: **Phase 2.1 native** — Kotlin `@Tool` (time, device info, openUrl) + iOS parity.
+다음: **S3** — E4B RAM gate, generation abort, Benchmark · `openUrl` approval live E2E.

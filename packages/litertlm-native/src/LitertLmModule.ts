@@ -9,6 +9,7 @@ import type {
   Message,
   PersistResult,
   RestoreResult,
+  StreamPart,
 } from './LitertLm.types';
 
 export interface LitertLmEngine {
@@ -28,7 +29,7 @@ export interface LitertLmEngine {
     conversationId: string,
     text: string,
     extraContext?: Record<string, unknown>,
-  ): AsyncIterable<string>;
+  ): AsyncIterable<StreamPart>;
   sendMessageSync(
     conversationId: string,
     text: string,

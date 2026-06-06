@@ -21,8 +21,24 @@ export default function ChatListScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void refresh();
-    }, [refresh]),
+      let active = true;
+      const run = async () => {
+        if (!active) {
+          return;
+        }
+        setLoading(true);
+        const list = await runtime.sessionStore.listSessions();
+        if (!active) {
+          return;
+        }
+        setSessions(list);
+        setLoading(false);
+      };
+      void run();
+      return () => {
+        active = false;
+      };
+    }, [runtime]),
   );
 
   const startNewChat = async () => {

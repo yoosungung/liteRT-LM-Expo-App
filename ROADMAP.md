@@ -78,7 +78,10 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 - [x] JS tool registry·built-in 스켈레톤 (`apps/mobile/src/agent/tools/`)
 - [x] UI 스켈레톤 — `ThinkingBlock`, `ToolApprovalSheet`
 - [x] S1 Mock tools + approval UI + Settings toggle (`mock-tool-smoke`)
-- [ ] 2.1 Native `@Tool` Kotlin/Swift wiring
+- [x] S2 Native `@Tool` + Thinking UI + Sampler settings
+- [x] 2.1 live E2E — LLM → time tool (`getCurrentTime`) ✅ (manual)
+- [x] 2.4 Thinking UI — `ThinkingBlock` 표시 ✅ (manual)
+- [ ] 2.3 live — `openUrl` approval E2E
 
 ### 작업표
 
@@ -167,7 +170,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 
 - [ ] Cold start → first token < 3s (E2B GPU, 플래그십 Android)
 - [ ] 10-turn conversation without crash
-- [ ] Tool call round-trip < 5s (simple native tool)
+- [x] Tool call round-trip < 5s (simple native tool) — `getCurrentTime` live ✅ (manual)
 - [ ] Zero network during inference (packet capture spot check)
 - [ ] Mock mode: chat UI full flow without model load
 - [ ] Download corrupt file → verify fails → Engine never called
@@ -182,7 +185,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 
 1. ~~Phase 1 Android/iOS live E2E~~ ✅ (2026-06-06)
 2. ~~Phase 2 kickoff — 계약·스켈레톤·`phase2-plan.md`~~ ✅ (2026-06-06)
-3. ~~Phase 2 S1: Mock tools + approval UI + Settings toggle~~ ✅
-4. **Phase 2.1 native:** Kotlin `@Tool` + iOS parity
-5. **Phase 2.4:** Thinking 토글 + `ThinkingBlock`
-6. Mock regression: `pnpm litertlm-native mock-tool-smoke` · `pnpm mobile start`
+3. ~~Phase 2 S1~~ ✅ · ~~Phase 2 S2 (native tools + thinking + sampler)~~ ✅
+4. ~~Phase 2 live E2E — time tool + Thinking UI~~ ✅ (manual)
+5. **Phase 2 S3:** E4B RAM gate + abort + Benchmark · `openUrl` approval live
+6. Mock regression: `pnpm litertlm-native mock-tool-smoke` · Thinking ON in Settings

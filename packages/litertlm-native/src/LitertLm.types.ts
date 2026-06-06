@@ -101,6 +101,11 @@ export interface Message {
 
 export type StreamDeltaKind = 'token' | 'thinking';
 
+export interface StreamPart {
+  kind: StreamDeltaKind;
+  delta: string;
+}
+
 export interface StreamDeltaEvent {
   conversationId: string;
   delta: string;
