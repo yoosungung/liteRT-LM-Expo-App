@@ -21,6 +21,7 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [streamingText, setStreamingText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadSession = useCallback(async () => {
@@ -31,11 +32,14 @@ export default function ChatScreen() {
     setSession(loaded);
     setError(null);
     if (loaded) {
+      setPreparing(true);
       try {
         await runtime.ensureConversation(loaded);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Engine not ready';
         setError(message);
+      } finally {
+        setPreparing(false);
       }
     }
   }, [id, runtime]);
@@ -92,6 +96,12 @@ export default function ChatScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
+        {preparing ? (
+          <View style={styles.preparingBanner}>
+            <ActivityIndicator size="small" color="#444" />
+            <Text style={styles.preparingText}>모델 준비 중…</Text>
+          </View>
+        ) : null}
         {error ? (
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>{error}</Text>
@@ -102,7 +112,7 @@ export default function ChatScreen() {
           value={input}
           onChangeText={setInput}
           onSend={send}
-          disabled={busy}
+          disabled={busy || preparing}
         />
       </KeyboardAvoidingView>
     </>
@@ -125,6 +135,19 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginTop: 8,
     borderRadius: 8,
+  },
+  preparingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#eef2ff',
+    padding: 10,
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 8,
+  },
+  preparingText: {
+    color: '#3730a3',
   },
   errorText: {
     color: '#991b1b',

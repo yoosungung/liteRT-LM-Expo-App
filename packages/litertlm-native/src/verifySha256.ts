@@ -27,7 +27,7 @@ function loadNativeModule(): LitertlmNativeSha256Module {
 }
 
 export function isNativeSha256VerifyAvailable(): boolean {
-  return Platform.OS === 'android';
+  return Platform.OS === 'android' || Platform.OS === 'ios';
 }
 
 export async function verifyFileSha256Native(

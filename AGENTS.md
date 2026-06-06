@@ -48,6 +48,8 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 1.2 NativeEngine | JS `NativeEngine` + `createEngine('live')` |
 | Phase 1.4–1.6 | ModelManager (SHA-256 pin+verify), SessionStore, PromptTemplateEngine |
 | Phase 1.10–1.11 | InferenceCoordinator + `warmUp`/`persistSession` skeleton |
-| Phase 1.12 | Native SHA-256 verify — **Android** `MessageDigest` (iOS CryptoKit pending) |
+| Phase 1.12 | Native SHA-256 verify — **Android** `MessageDigest` · **iOS** CryptoKit ✅ |
+| Phase 1.8 | iOS Swift Engine bridge — LiteRT-LM **0.13.0** SPM + `EngineBridge` parity ✅ |
+| Phase 1 Android live E2E | **완료** — `EXPO_PUBLIC_LITERTLM_MODE=live` → E2B download → GPU inference (dev rebuild, manual 2026-06-06) |
 
-다음: Android dev rebuild E2E (download→GPU chat), iOS bridge (1.8), native SHA-256 (1.12).
+다음: iOS dev rebuild E2E (1.9), Phase 1 완료 기준 나머지(재시작 후 히스토리 등).

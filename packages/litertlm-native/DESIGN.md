@@ -161,9 +161,13 @@ NotificationCenter.default.addObserver(
 
 ### Config plugin (iOS)
 
-- SPM: `https://github.com/google-ai-edge/LiteRT-LM` — **exact version v0.13.0**
-- App target + Expo module target 모두 `LiteRTLM` product 링크
-- Pod/SPM 충돌: mediapipe-samples는 CocoaPods — prebuild 검증 (ROADMAP R3)
+- **CocoaPods binary pod split** (expo-litert-lm 패턴, CocoaPods [#11948](https://github.com/CocoaPods/CocoaPods/issues/11948) 우회):
+  - `CLiteRTLMBinary` — top-level `vendored_frameworks` only (`ios/BinaryPods/`)
+  - `LitertlmNative` — Expo Module + vendored Swift wrapper (`vendor/LiteRTLM/`)
+  - `withLitertLm.js` — consumer `Podfile`에 `CLiteRTLMBinary` 주입 (autolinking은 메인 podspec만 발견)
+- **SPM 미사용** — LiteRT-LM `Package.swift`의 `unsafeFlags(-all_load)`는 Pod library transitive dependency 불가
+- `prepare-ios-vendor.sh` — `pod install` 시 `CLiteRTLM.xcframework` (release **v0.13.0**) + Swift sources (**v0.13.0** tag) fetch
+- `-all_load` — `LitertlmNative` `pod_target_xcconfig` / `user_target_xcconfig` (C++ backend static initializer 보존)
 
 ---
 
@@ -240,6 +244,9 @@ pnpm install
 
 # TypeScript
 pnpm litertlm-native typecheck
+
+# Mock streaming smoke (no native module)
+pnpm litertlm-native mock-smoke
 
 # Native module is autolinked from apps/mobile via workspace:*
 # Rebuild dev client after Kotlin/Swift changes:

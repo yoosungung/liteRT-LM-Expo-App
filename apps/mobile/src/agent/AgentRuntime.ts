@@ -10,8 +10,13 @@ import {
   type Message,
 } from 'litertlm-native';
 
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+
 import type { ModelId } from '../models/manifest';
 import { ModelManager } from '../models/ModelManager';
+import { ModelPreferences } from '../models/ModelPreferences';
+import { inferenceCacheDirectory } from '../models/verifyModel';
 import { createSessionId, SessionStore, type StoredSession } from '../storage/SessionStore';
 import { InferenceCoordinator } from './InferenceCoordinator';
 import { createPromptTemplateEngine } from './PromptTemplateEngine';
@@ -27,9 +32,23 @@ function isEngineLifecycleReady(lifecycle: InferenceLifecycle): boolean {
   return lifecycle === 'active' || lifecycle === 'idle';
 }
 
+const MODEL_IDS: ModelId[] = ['gemma-4-e2b', 'gemma-4-e4b'];
+
+function isIosSimulator(): boolean {
+  return Platform.OS === 'ios' && Constants.isDevice === false;
+}
+
+function resolvePreferredBackend(preferred: Backend): Backend {
+  if (isIosSimulator()) {
+    return 'cpu';
+  }
+  return preferred;
+}
+
 export class AgentRuntime {
   readonly sessionStore = new SessionStore();
   readonly modelManager = new ModelManager();
+  readonly modelPreferences = new ModelPreferences();
   readonly coordinator: InferenceCoordinator;
 
   private engine: LitertLmEngine;
@@ -40,6 +59,8 @@ export class AgentRuntime {
   private loadedBackend: Backend | null = null;
   private activeModelId: ModelId = 'gemma-4-e2b';
   private abortControllers = new Map<string, AbortController>();
+  private loadModelPromise: Promise<{ backend: Backend }> | null = null;
+  private loadingModelId: ModelId | null = null;
 
   constructor(engine?: LitertLmEngine) {
     this.engineConfig = defaultMockConfig();
@@ -54,6 +75,10 @@ export class AgentRuntime {
 
   getLoadedBackend(): Backend | null {
     return this.loadedBackend;
+  }
+
+  getActiveModelId(): ModelId {
+    return this.activeModelId;
   }
 
   isModelLoaded(): boolean {
@@ -84,8 +109,9 @@ export class AgentRuntime {
       throw new Error('Model is not verified. Download and verify before live mode.');
     }
 
+    const resolvedPreferred = resolvePreferredBackend(preferredBackend);
     const backends: Backend[] =
-      preferredBackend === 'gpu' ? ['gpu', 'cpu'] : [preferredBackend];
+      resolvedPreferred === 'gpu' ? ['gpu', 'cpu'] : [resolvedPreferred];
 
     let lastError: Error | null = null;
     for (const backend of backends) {
@@ -93,6 +119,7 @@ export class AgentRuntime {
         await this.applyEngineConfig(mode, verifiedPath, backend);
         this.modelLoaded = true;
         this.loadedBackend = backend;
+        await this.modelPreferences.setLastUsed(modelId, backend);
         return { backend };
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -115,6 +142,7 @@ export class AgentRuntime {
       mode,
       backend,
       modelPath: modelPath ?? undefined,
+      cacheDir: inferenceCacheDirectory().uri,
     };
 
     if (this.initialized) {
@@ -130,9 +158,13 @@ export class AgentRuntime {
   }
 
   async createSession(options: SessionOptions = {}): Promise<StoredSession> {
+    const modelId =
+      options.modelId ??
+      (await this.modelPreferences.getLastUsedModelId()) ??
+      (await this.resolveDefaultModelId());
+
     await this.initialize();
 
-    const modelId = options.modelId ?? this.activeModelId;
     const id = createSessionId();
     const session: StoredSession = {
       id,
@@ -156,11 +188,7 @@ export class AgentRuntime {
   async ensureConversation(session: StoredSession): Promise<void> {
     const mode = resolveEngineMode();
     if (mode === 'live') {
-      if (!this.modelLoaded || !this.engineConfig.modelPath) {
-        throw new Error(
-          'Models 탭에서 verified 모델을 Use for chat으로 먼저 로드하세요.',
-        );
-      }
+      await this.ensureModelLoaded(session.modelId as ModelId);
     }
 
     await this.initialize();
@@ -176,6 +204,73 @@ export class AgentRuntime {
       conversationId: session.id,
       systemInstruction: this.promptEngine.buildSystemInstruction(session),
     });
+  }
+
+  async ensureModelLoaded(modelId: ModelId): Promise<void> {
+    if (resolveEngineMode() === 'mock') {
+      return;
+    }
+
+    if (
+      this.modelLoaded &&
+      this.activeModelId === modelId &&
+      this.engineConfig.modelPath &&
+      isEngineLifecycleReady(this.engine.getStatus().lifecycle)
+    ) {
+      return;
+    }
+
+    if (this.loadModelPromise) {
+      await this.loadModelPromise;
+      if (
+        this.modelLoaded &&
+        this.activeModelId === modelId &&
+        this.engineConfig.modelPath &&
+        isEngineLifecycleReady(this.engine.getStatus().lifecycle)
+      ) {
+        return;
+      }
+    }
+
+    const resolvedId = await this.resolveLoadableModelId(modelId);
+    if (!resolvedId) {
+      throw new Error('verified 모델이 없습니다. Models 탭에서 E2B를 다운로드하세요.');
+    }
+
+    const lastUsed = await this.modelPreferences.getLastUsed();
+    const preferredBackend = resolvePreferredBackend(lastUsed?.backend ?? 'gpu');
+
+    this.loadingModelId = resolvedId;
+    this.loadModelPromise = this.loadModel(resolvedId, preferredBackend);
+    try {
+      await this.loadModelPromise;
+    } finally {
+      this.loadModelPromise = null;
+      this.loadingModelId = null;
+    }
+  }
+
+  private async resolveLoadableModelId(preferred: ModelId): Promise<ModelId | null> {
+    if (await this.modelManager.getVerifiedModelPath(preferred)) {
+      return preferred;
+    }
+
+    const lastUsed = await this.modelPreferences.getLastUsedModelId();
+    if (lastUsed && (await this.modelManager.getVerifiedModelPath(lastUsed))) {
+      return lastUsed;
+    }
+
+    for (const id of MODEL_IDS) {
+      if (await this.modelManager.getVerifiedModelPath(id)) {
+        return id;
+      }
+    }
+    return null;
+  }
+
+  private async resolveDefaultModelId(): Promise<ModelId> {
+    const resolved = await this.resolveLoadableModelId('gemma-4-e2b');
+    return resolved ?? 'gemma-4-e2b';
   }
 
   async *sendUserMessage(sessionId: string, text: string): AsyncIterable<StreamChunk> {

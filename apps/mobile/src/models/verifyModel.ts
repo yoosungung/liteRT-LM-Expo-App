@@ -106,3 +106,11 @@ export async function verifyModelSha256(
 export function modelLocalPath(modelId: string): string {
   return modelFile(modelId).uri;
 }
+
+export function inferenceCacheDirectory(): Directory {
+  const dir = new Directory(Paths.cache, 'litertlm');
+  if (!dir.exists) {
+    dir.create({ intermediates: true, idempotent: true });
+  }
+  return dir;
+}

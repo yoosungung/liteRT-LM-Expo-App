@@ -1,7 +1,9 @@
+import Constants from 'expo-constants';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -76,18 +78,20 @@ export default function ModelsScreen() {
 
   const useModel = async (id: ModelInstallState['id']) => {
     setBusyId(id);
+    const preferGpu = Platform.OS === 'ios' ? Constants.isDevice : true;
     try {
-      const { backend } = await runtime.loadModel(id, 'gpu');
+      const { backend } = await runtime.loadModel(id, preferGpu ? 'gpu' : 'cpu');
       Alert.alert(
         'Model loaded',
         `Gemma 4 ${id} is ready (${engineMode} mode, ${backend} backend). Open Chats to start inference.`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Load failed';
-      Alert.alert(
-        'Load failed',
-        `${message}\n\nTip: Android emulator often needs CPU backend (auto-fallback after GPU).`,
-      );
+      const tip =
+        Platform.OS === 'ios' && !Constants.isDevice
+          ? 'iOS Simulator uses CPU only. If this persists, restart the app and retry (E2B needs ~600MB+ RAM).'
+          : 'Android emulator often needs CPU backend (auto-fallback after GPU).';
+      Alert.alert('Load failed', `${message}\n\nTip: ${tip}`);
     } finally {
       setBusyId(null);
     }
@@ -114,8 +118,8 @@ export default function ModelsScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.lead}>
-        Engine mode: {engineMode}. Download E2B, verify SHA-256, then tap Use for chat. Live mode
-        needs Android dev build + EXPO_PUBLIC_LITERTLM_MODE=live.
+        Engine mode: {engineMode}. Download E2B and verify SHA-256 — Chats will auto-load the last
+        model used. Use for chat pre-warms without opening a conversation.
       </Text>
 
       {MODEL_MANIFEST.map((entry) => {
