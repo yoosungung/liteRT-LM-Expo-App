@@ -1,0 +1,263 @@
+import type {
+  ConversationConfig,
+  EngineConfig,
+  EngineStatus,
+  HibernationPolicy,
+  LitertLmEventListener,
+  LitertLmEventMap,
+  LitertLmEventName,
+  Message,
+  MockEngineConfig,
+  PersistResult,
+  RestoreResult,
+  StreamDeltaKind,
+} from '../LitertLm.types';
+import type { LitertLmEngine } from '../LitertLmModule';
+import { TokenBatcher } from './TokenBatcher';
+
+const DEFAULT_CANNED = [
+  'Hello! I am running in mock mode without a LiteRT-LM model file.',
+  'Mock mode lets you build the chat UI and AgentRuntime before native Engine wiring.',
+  'Token batching follows ARCHITECTURE §1.7 (~50ms or 8 tokens per flush).',
+];
+
+export class MockEngine implements LitertLmEngine {
+  private status: EngineStatus = { lifecycle: 'unloaded' };
+  private conversations = new Map<string, ConversationConfig>();
+  private listeners = new Map<LitertLmEventName, Set<LitertLmEventListener<LitertLmEventName>>>();
+  private config: EngineConfig | null = null;
+  private hibernationPolicy: HibernationPolicy = {
+    idleTimeoutMs: 300_000,
+    hibernateOnMemoryWarning: true,
+    persistKvOnHibernate: true,
+  };
+  private responseIndex = 0;
+
+  async initialize(config: EngineConfig): Promise<void> {
+    await this.transition('loading');
+    this.config = config;
+    await this.transition('active', { backend: config.backend ?? 'cpu' });
+  }
+
+  async shutdown(): Promise<void> {
+    this.conversations.clear();
+    this.config = null;
+    await this.transition('unloaded');
+  }
+
+  getStatus(): EngineStatus {
+    return { ...this.status };
+  }
+
+  async warmUp(config: EngineConfig): Promise<void> {
+    if (this.status.lifecycle === 'active') {
+      return;
+    }
+    await this.initialize(config);
+  }
+
+  async enterIdle(): Promise<void> {
+    if (this.status.lifecycle === 'active') {
+      await this.transition('idle');
+    }
+  }
+
+  async hibernate(options?: { conversationIds?: string[] }): Promise<void> {
+    void options;
+    if (this.status.lifecycle === 'unloaded') {
+      return;
+    }
+    await this.transition('hibernating');
+    this.conversations.clear();
+    this.config = null;
+    await this.transition('hibernated', { kvSnapshotPresent: false });
+  }
+
+  setHibernationPolicy(policy: HibernationPolicy): void {
+    this.hibernationPolicy = { ...this.hibernationPolicy, ...policy };
+  }
+
+  async persistSession(conversationId: string): Promise<PersistResult> {
+    void this.hibernationPolicy;
+    return {
+      conversationId,
+      snapshotPath: `mock://${conversationId}.kvsnapshot`,
+      snapshotBytes: 0,
+      usedNativeKvSerialize: false,
+    };
+  }
+
+  async restoreSession(conversationId: string): Promise<RestoreResult> {
+    return {
+      conversationId,
+      restoredFrom: 'empty',
+    };
+  }
+
+  async deleteSessionSnapshot(conversationId: string): Promise<void> {
+    void conversationId;
+  }
+
+  async createConversation(config: ConversationConfig): Promise<void> {
+    this.ensureActive();
+    this.conversations.set(config.conversationId, config);
+    this.patchStatus({ activeConversationId: config.conversationId });
+  }
+
+  async closeConversation(conversationId: string): Promise<void> {
+    this.conversations.delete(conversationId);
+    if (this.status.activeConversationId === conversationId) {
+      this.patchStatus({ activeConversationId: undefined });
+    }
+  }
+
+  async *sendMessage(
+    conversationId: string,
+    text: string,
+    extraContext?: Record<string, unknown>,
+  ): AsyncIterable<string> {
+    void extraContext;
+    this.ensureActive();
+    if (!this.conversations.has(conversationId)) {
+      throw new Error(`Conversation not found: ${conversationId}`);
+    }
+
+    const mock = this.config?.mock ?? {};
+    const response = this.pickResponse(text, mock);
+    const batchConfig = this.config?.streamBatch ?? {};
+    const tokensPerSecond = mock.tokensPerSecond ?? 30;
+
+    if (mock.simulateThinking) {
+      const thinking = 'Let me think about that for a moment…';
+      for await (const chunk of this.streamWithBatcher(thinking, batchConfig, tokensPerSecond, 'thinking')) {
+        yield chunk;
+      }
+    }
+
+    let full = '';
+    for await (const chunk of this.streamWithBatcher(response, batchConfig, tokensPerSecond, 'token')) {
+      full += chunk;
+      yield chunk;
+    }
+
+    const message: Message = {
+      id: `${conversationId}-${Date.now()}`,
+      role: 'assistant',
+      content: full,
+      timestamp: Date.now(),
+    };
+    this.emit('onMessageComplete', { conversationId, message });
+  }
+
+  async sendMessageSync(
+    conversationId: string,
+    text: string,
+    extraContext?: Record<string, unknown>,
+  ): Promise<Message> {
+    let content = '';
+    for await (const chunk of this.sendMessage(conversationId, text, extraContext)) {
+      content += chunk;
+    }
+    return {
+      id: `${conversationId}-${Date.now()}`,
+      role: 'assistant',
+      content,
+      timestamp: Date.now(),
+    };
+  }
+
+  addListener<T extends LitertLmEventName>(
+    eventName: T,
+    listener: LitertLmEventListener<T>,
+  ): { remove: () => void } {
+    if (!this.listeners.has(eventName)) {
+      this.listeners.set(eventName, new Set());
+    }
+    const set = this.listeners.get(eventName)!;
+    set.add(listener as LitertLmEventListener<LitertLmEventName>);
+    return {
+      remove: () => set.delete(listener as LitertLmEventListener<LitertLmEventName>),
+    };
+  }
+
+  private async *streamWithBatcher(
+    text: string,
+    batchConfig: { flushIntervalMs?: number; maxTokensPerBatch?: number },
+    tokensPerSecond: number,
+    kind: StreamDeltaKind,
+  ): AsyncGenerator<string> {
+    const pending: string[] = [];
+    const batcher = new TokenBatcher({
+      ...batchConfig,
+      onFlush: (delta, flushKind) => {
+        if (flushKind === kind) {
+          pending.push(delta);
+        }
+      },
+    });
+
+    const words = text.split(/(\s+)/).filter((part) => part.length > 0);
+    const delayMs = Math.max(1, Math.floor(1000 / Math.max(tokensPerSecond, 1)));
+
+    for (const word of words) {
+      batcher.append(word, kind);
+      await sleep(delayMs);
+      while (pending.length > 0) {
+        yield pending.shift()!;
+      }
+    }
+
+    batcher.flush();
+    while (pending.length > 0) {
+      yield pending.shift()!;
+    }
+  }
+
+  private pickResponse(text: string, mock: MockEngineConfig): string {
+    const canned = mock.cannedResponses?.length ? mock.cannedResponses : DEFAULT_CANNED;
+    const template = canned[this.responseIndex % canned.length]!;
+    this.responseIndex += 1;
+    return `${template}\n\n(You said: "${text.trim()}")`;
+  }
+
+  private ensureActive(): void {
+    if (this.status.lifecycle !== 'active' && this.status.lifecycle !== 'idle') {
+      throw new Error('ENGINE_NOT_READY');
+    }
+  }
+
+  private async transition(
+    lifecycle: EngineStatus['lifecycle'],
+    patch: Partial<EngineStatus> = {},
+  ): Promise<void> {
+    const from = this.status.lifecycle;
+    this.status = {
+      ...this.status,
+      ...patch,
+      lifecycle,
+      lastTransitionAt: Date.now(),
+    };
+    this.emit('onEngineStatusChanged', this.getStatus());
+    this.emit('onInferenceLifecycleChanged', { from, to: lifecycle });
+    await sleep(lifecycle === 'loading' ? 120 : 0);
+  }
+
+  private patchStatus(patch: Partial<EngineStatus>): void {
+    this.status = { ...this.status, ...patch, lastTransitionAt: Date.now() };
+    this.emit('onEngineStatusChanged', this.getStatus());
+  }
+
+  private emit<T extends LitertLmEventName>(eventName: T, payload: LitertLmEventMap[T]): void {
+    const set = this.listeners.get(eventName);
+    if (!set) {
+      return;
+    }
+    for (const listener of set) {
+      listener(payload);
+    }
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

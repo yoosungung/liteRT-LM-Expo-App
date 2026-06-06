@@ -1,0 +1,55 @@
+import type { EngineConfig, EngineMode } from './LitertLm.types';
+import { MockEngine } from './mock/MockEngine';
+import type { LitertLmEngine } from './LitertLmModule';
+
+declare const __DEV__: boolean | undefined;
+
+function readEnvMode(): EngineMode | undefined {
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+    ?.env;
+  const value = env?.EXPO_PUBLIC_LITERTLM_MODE;
+  if (value === 'mock' || value === 'live') {
+    return value;
+  }
+  return undefined;
+}
+export function resolveEngineMode(config?: Partial<EngineConfig>): EngineMode {
+  if (config?.mode) {
+    return config.mode;
+  }
+  const envMode = readEnvMode();
+  if (envMode) {
+    return envMode;
+  }
+  return typeof __DEV__ !== 'undefined' && __DEV__ ? 'mock' : 'live';
+}
+
+export function createEngine(config?: Partial<EngineConfig>): LitertLmEngine {
+  const mode = resolveEngineMode(config);
+  if (mode === 'mock') {
+    return new MockEngine();
+  }
+  throw new Error(
+    'Live LiteRT-LM engine is not wired yet (Phase 1). Set EXPO_PUBLIC_LITERTLM_MODE=mock.',
+  );
+}
+
+export function defaultMockConfig(): EngineConfig {
+  return {
+    mode: 'mock',
+    backend: 'cpu',
+    mock: {
+      tokensPerSecond: 30,
+      simulateThinking: false,
+    },
+    streamBatch: {
+      flushIntervalMs: 50,
+      maxTokensPerBatch: 8,
+    },
+  };
+}
+
+export * from './LitertLm.types';
+export type { LitertLmEngine } from './LitertLmModule';
+export { MockEngine } from './mock/MockEngine';
+export { TokenBatcher } from './mock/TokenBatcher';

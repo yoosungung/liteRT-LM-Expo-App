@@ -181,6 +181,26 @@ idle → sending → streaming → (tool_approval_pending) → (tool_executing) 
 
 ## Commands
 
-> 코드 미구현. Phase 1 시작 시 아래를 실제 명령으로 갱신한다.
+```bash
+# monorepo root
+pnpm install
 
-<!-- Phase 1 이후 추가 -->
+# JS dev server (mock mode default in __DEV__)
+pnpm mobile start
+
+# Android dev client (requires Android SDK / emulator, **JDK 17 or 21** — JDK 24+ breaks native prefab/CMake)
+pnpm mobile android
+
+# iOS simulator dev client (requires Xcode)
+pnpm mobile ios
+
+# EAS development build (set real projectId in app.json extra.eas first)
+cd apps/mobile && eas build --platform android --profile development
+
+# typecheck
+pnpm mobile typecheck
+pnpm litertlm-native typecheck
+```
+
+환경 변수: `apps/mobile/.env.example` → `.env.local` (`EXPO_PUBLIC_LITERTLM_MODE=mock`).
+

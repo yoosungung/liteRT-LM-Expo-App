@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["LitertlmNativeModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.litertlmnative.LitertlmNativeModule"]
+  }
+}

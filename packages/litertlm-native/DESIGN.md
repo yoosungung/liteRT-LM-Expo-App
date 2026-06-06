@@ -150,10 +150,20 @@ NotificationCenter.default.addObserver(
 - Metal `Backend.GPU()` default when available
 - API parity with Android ([ARCHITECTURE §2.3](../../ARCHITECTURE.md))
 
+**레퍼런스 (Gallery iOS 소스 대신):**
+
+| 출처 | 가져올 것 |
+|------|-----------|
+| [LiteRT-LM Swift](https://developers.google.com/edge/litert-lm/swift) | `Engine`, `Conversation`, Metal backend |
+| [mediapipe-samples llm_inference/ios](../../.references/mediapipe-llm-inference-ios.md) | `OnDeviceModel`/`Chat` 분리, `generateResponseAsync` stream, HF 다운로드 UX |
+
+> MediaPipe `LlmInference` API는 deprecated. pod 의존성을 그대로 넣지 말고 **LiteRT-LM SPM**만 링크한다.
+
 ### Config plugin (iOS)
 
 - SPM: `https://github.com/google-ai-edge/LiteRT-LM` — **exact version v0.13.0**
-- 통합 경로: `expo-build-properties` 또는 custom plugin (Phase 0.5 Gallery iOS 참고)
+- App target + Expo module target 모두 `LiteRTLM` product 링크
+- Pod/SPM 충돌: mediapipe-samples는 CocoaPods — prebuild 검증 (ROADMAP R3)
 
 ---
 
@@ -224,9 +234,24 @@ Gallery는 RN이 아니므로 **API 호출 순서·config만** 참고.
 
 ## Commands
 
-> 코드 미구현. Phase 0.4 이후 갱신.
+```bash
+# monorepo root
+pnpm install
 
-<!-- 예정:
-cd packages/litertlm-native/example
-npx expo run:android
--->
+# TypeScript
+pnpm litertlm-native typecheck
+
+# Native module is autolinked from apps/mobile via workspace:*
+# Rebuild dev client after Kotlin/Swift changes:
+pnpm mobile android   # or pnpm mobile ios
+```
+
+Phase 0 mock backend는 **JS-only** (`src/mock/MockEngine.ts`). Live Engine Gradle/SPM 의존성은 Phase 1.
+
+생성 명령 (참고):
+
+```bash
+cd packages && npx create-expo-module litertlm-native --local
+# → packages/litertlm-native 로 수동 배치 (monorepo layout)
+```
+

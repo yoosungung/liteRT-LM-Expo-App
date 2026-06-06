@@ -30,15 +30,18 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 
 ## 3. Status
 
-**기획·설계 완료 (2026-06-06). 코드 미구현.**
+**Phase 0 scaffold 완료 (2026-06-06).** Phase 1 Core Chat 착수 대기.
 
 | 항목 | 상태 |
 |------|------|
-| `.references/` | Expo, LiteRT-LM, Gemma 4, Gallery 참조 정리 |
+| `.references/` | Expo, LiteRT-LM, Gemma 4, Gallery + **Phase 0 spike 노트** |
 | `ARCHITECTURE.md` | 계약 + Bridge/Agent API (**§1.7–1.12** 방어적·메모리 설계) |
 | `ROADMAP.md` | Phase 0–4 |
 | Phase 0 결정 | **pnpm**, **`HF_TOKEN`**, LiteRT-LM **v0.13.0** |
-| `apps/mobile/` | DESIGN.md only |
-| `packages/litertlm-native/` | DESIGN.md only |
+| Phase 0.1 monorepo | `pnpm` workspace, `apps/mobile` Expo SDK 56 |
+| Phase 0.3 dev client | `expo-dev-client`, `eas.json` development profile |
+| Phase 0.4 mock module | `packages/litertlm-native` JS MockEngine + native skeleton |
+| Phase 0.2 CLI 스모크 | **완료** — E2B 1-turn (`Hello!`), `.references/phase0-cli-smoke.md` |
+| Phase 0.5 / 0.7 | Gallery·KV persist spike 노트 |
 
-다음: ROADMAP Phase 0 (pnpm monorepo + dev client + native module skeleton).
+다음: ROADMAP Phase 1 (Android Engine bridge, Chat UI, Model Manager).

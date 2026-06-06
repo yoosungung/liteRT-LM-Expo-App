@@ -39,9 +39,7 @@ ROADMAP.md                   # Phase별 구현 계획
 | [apps/mobile/DESIGN.md](./apps/mobile/DESIGN.md) | 모바일 앱 내부 설계 |
 | [packages/litertlm-native/DESIGN.md](./packages/litertlm-native/DESIGN.md) | 네이티브 모듈 설계 |
 
-## Phase 1 Quickstart (로컬 — 구현 후 갱신)
-
-> **현재 상태: 기획 완료, 코드 미구현.** 아래는 Phase 1 목표 워크플로다.
+## Phase 1 Quickstart (로컬)
 
 ### 사전 요구
 
@@ -50,7 +48,19 @@ ROADMAP.md                   # Phase별 구현 계획
 - **Hugging Face read token** — `HF_TOKEN` env (모델 다운로드·CLI 스모크)
 - LiteRT-LM CLI (모델 스모크 테스트용, optional)
 
-### 1. LiteRT-LM CLI로 모델 확인 (선택)
+### 1. Monorepo + mock 앱 (Phase 0)
+
+```bash
+pnpm install
+cp apps/mobile/.env.example apps/mobile/.env.local   # EXPO_PUBLIC_LITERTLM_MODE=mock
+
+pnpm mobile start          # JS 번들
+pnpm mobile android        # dev client (첫 빌드는 시간 소요)
+```
+
+앱 화면에서 **Send (mock)** → 스트리밍 응답 확인 (모델 파일 불필요).
+
+### 2. LiteRT-LM CLI로 모델 확인 (선택)
 
 ```bash
 # LiteRT-LM CLI 설치 후 (HF gated repo)
@@ -59,25 +69,16 @@ litert-lm run --from-huggingface-repo=litert-community/gemma-4-E2B-it-litert-lm 
   gemma-4-E2B-it.litertlm --prompt="Hello"
 ```
 
-### 2. 앱 (Phase 1 구현 후)
+자세한 절차: [.references/phase0-cli-smoke.md](./.references/phase0-cli-smoke.md)
+
+### 3. EAS development build (optional)
 
 ```bash
-# monorepo root
-pnpm install
-
 cd apps/mobile
-pnpm exec expo install expo-dev-client
-
-# Android development build
-pnpm exec expo run:android
-# 또는
 eas build --platform android --profile development
-
-# JS 번들
-pnpm exec expo start
 ```
 
-### 3. 앱 내
+### 4. Phase 1 이후 (목표)
 
 1. Model Manager에서 **Gemma 4 E2B** 다운로드
 2. Backend **GPU** 선택 (지원 기기)
@@ -91,6 +92,7 @@ pnpm exec expo start
 - [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM)
 - [Gemma 4 on LiteRT-LM](https://ai.google.dev/edge/litert-lm/models/gemma-4)
 - [AI Edge Gallery](https://github.com/google-ai-edge/gallery)
+- [MediaPipe iOS LLM Inference](https://developers.google.com/mediapipe/solutions/genai/llm_inference/ios) · [샘플 코드](https://github.com/google-ai-edge/mediapipe-samples/tree/main/examples/llm_inference/ios)
 
 ## License
 

@@ -24,7 +24,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 | 0.2 | LiteRT-LM CLI 설치·E2B 스모크 | `.references` 검증 노트 | 로컬에서 E2B 1-turn 대화 성공 |
 | 0.3 | `expo-dev-client` 빌드 파이프라인 | `eas.json` development profile | Android emulator dev build 설치 |
 | 0.4 | Native module skeleton + **Mock backend** | `litertlm-native` | RN mock mode streaming without model |
-| 0.5 | Gallery Android 소스 리딩 | DESIGN.md 메모 | Engine·**session/KV persist** 호출 위치 파악 |
+| 0.5 | Gallery Android + **iOS LLM 샘플** 리딩 | DESIGN.md · `.references` | Android Engine/KV; iOS는 [mediapipe-samples llm_inference/ios](https://github.com/google-ai-edge/mediapipe-samples/tree/main/examples/llm_inference/ios) 임베딩 패턴 |
 | 0.6 | Defensive design 검토 | ARCHITECTURE §1.7–1.11 | 계약 반영 완료 |
 | 0.7 | **LiteRT-LM KV persist API** 스파이크 | `.references` 노트 | Kotlin/Swift `persist`/`restore` 가능 여부 · fallback 확정 |
 
@@ -136,7 +136,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 |----|--------|------|------|
 | R1 | iOS Swift API Early Preview | iOS 지연 | Android first; CPU fallback |
 | R2 | E4B RAM on mid devices | crash/OOM | `minRamMb` gate, E2B default |
-| R3 | Expo + SPM/CocoaPods 충돌 | iOS build fail | Config plugin, Gallery iOS 빌드 참고 |
+| R3 | Expo + SPM/CocoaPods 충돌 | iOS build fail | LiteRT-LM SPM config plugin; [mediapipe-samples](../../.references/mediapipe-llm-inference-ios.md) Pod 패턴 참고·충돌 검증 |
 | R4 | Model download size (2.5GB+) | UX 이탈 | Wi-Fi only option, resume download |
 | R5 | RN bridge streaming perf | choppy UI | **§1.7 token batching** (50ms / 8 tok) |
 | R6 | HF license / Gemma terms | 배포 제약 | 앱 내 라이선스 표시, accept flow |
@@ -164,8 +164,6 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 
 ## 다음 액션 (즉시)
 
-1. Phase 0.1: `apps/mobile` Expo 프로젝트 생성 + `expo-dev-client`
-2. Phase 0.2: LiteRT-LM CLI로 `gemma-4-E2B-it` 로컬 실행
-3. Phase 0.4: `create-expo-module litertlm-native` scaffold
-
-구현 시 해당 컴포넌트 `DESIGN.md`의 **Commands** 섹션을 채운다.
+1. Phase 1.1: LiteRT-LM Android Engine bridge (`litertlm-android:0.13.0`)
+2. Phase 1.3: Chat UI (Expo Router) — mock mode default
+3. 로컬 Phase 0.2: `HF_TOKEN`으로 CLI E2B 스모크 (`.references/phase0-cli-smoke.md`)

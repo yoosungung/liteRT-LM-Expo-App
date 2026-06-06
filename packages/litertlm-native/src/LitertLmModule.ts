@@ -1,0 +1,43 @@
+import type {
+  ConversationConfig,
+  EngineConfig,
+  EngineStatus,
+  HibernationPolicy,
+  LitertLmEventListener,
+  LitertLmEventMap,
+  LitertLmEventName,
+  Message,
+  PersistResult,
+  RestoreResult,
+} from './LitertLm.types';
+
+export interface LitertLmEngine {
+  initialize(config: EngineConfig): Promise<void>;
+  shutdown(): Promise<void>;
+  getStatus(): EngineStatus;
+  warmUp(config: EngineConfig): Promise<void>;
+  enterIdle(): Promise<void>;
+  hibernate(options?: { conversationIds?: string[] }): Promise<void>;
+  setHibernationPolicy(policy: HibernationPolicy): void;
+  persistSession(conversationId: string): Promise<PersistResult>;
+  restoreSession(conversationId: string): Promise<RestoreResult>;
+  deleteSessionSnapshot(conversationId: string): Promise<void>;
+  createConversation(config: ConversationConfig): Promise<void>;
+  closeConversation(conversationId: string): Promise<void>;
+  sendMessage(
+    conversationId: string,
+    text: string,
+    extraContext?: Record<string, unknown>,
+  ): AsyncIterable<string>;
+  sendMessageSync(
+    conversationId: string,
+    text: string,
+    extraContext?: Record<string, unknown>,
+  ): Promise<Message>;
+  addListener<T extends LitertLmEventName>(
+    eventName: T,
+    listener: LitertLmEventListener<T>,
+  ): { remove: () => void };
+}
+
+export type { EngineConfig, EngineStatus, Message, StreamDeltaEvent } from './LitertLm.types';
