@@ -82,6 +82,8 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 - [x] 2.1 live E2E — LLM → time tool (`getCurrentTime`) ✅ (manual)
 - [x] 2.4 Thinking UI — `ThinkingBlock` 표시 ✅ (manual)
 - [x] 2.3 live — `openUrl` approval E2E ✅ iOS iPhone 16e · Android `liteRTLM_E2B` (manual 2026-06-06)
+- [x] Phase 2 S4 — KV persist/hibernate + Snapshot UI + Smart Eviction
+- [x] Phase 2 S4 iOS live E2E — iPhone 16e: build + hibernate/restore ✅ (manual 2026-06-06)
 
 ### 작업표
 
@@ -95,12 +97,113 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 | 2.6 | Sampler settings (temperature, top-k) — Prompt Lab lite | Settings | 1 |
 | 2.7 | Generation abort, 백그라운드 처리 | Coordinator + native | 1 ✅ |
 | 2.8 | Benchmark 화면 (prefill/decode rough metrics) | `apps/mobile` | 2 ✅ |
-| 2.9 | **`persistSession` / `restoreSession`** + `.kvsnapshot` | `litertlm-native` | 3 |
-| 2.10 | **Smart Eviction** — `onTrimMemory`, memory warning | `litertlm-native` | 3 |
-| 2.11 | **Snapshot UI** + loading skeleton (`restoring`) | `apps/mobile` | 3 |
-| 2.12 | Background **Idle → Hibernate** timer (`T_idle`) | InferenceCoordinator | 3 |
+| 2.9 | **`persistSession` / `restoreSession`** + `.kvsnapshot` | `litertlm-native` | 3 ✅ |
+| 2.10 | **Smart Eviction** — `onTrimMemory`, memory warning | `litertlm-native` | 3 ✅ |
+| 2.11 | **Snapshot UI** + loading skeleton (`restoring`) | `apps/mobile` | 3 ✅ |
+| 2.12 | Background **Idle → Hibernate** timer (`T_idle`) | InferenceCoordinator | 3 ✅ |
 
 **레퍼런스:** [.references/gallery-function-calling.md](./.references/gallery-function-calling.md) · [.references/phase0-kv-persist-spike.md](./.references/phase0-kv-persist-spike.md)
+
+---
+
+## TDD Rollout — 테스트 인프라·레거시 회귀 (Phase 2.5)
+
+**목표:** ARCHITECTURE §1.13 준수. 기존 Phase 1–2 코드에 **역방향 TDD**(실패 테스트 → 통과)로 회귀 스위트 구축. 이후 Phase 3+는 **순방향 TDD**(테스트 선행)만 허용.
+
+**전제:** Mock-first (`EXPO_PUBLIC_LITERTLM_MODE=mock`) · 수동 live E2E는 Wave T4 완료 후 보조.
+
+### Wave 요약
+
+| Wave | 범위 | 완료 기준 |
+|------|------|-----------|
+| **T0** | Vitest/Jest, 루트 `pnpm test`, CI | PR에서 `test`+`typecheck` green |
+| **T1** | `litertlm-native` 순수 TS | §1.7·§1.11 회귀 Vitest |
+| **T2** | `apps/mobile` 순수 로직 | §1.8·§1.9·§1.10 단위 커버 |
+| **T3** | storage·coordinator·ModelManager | AsyncStorage/RN mock 통합 |
+| **T4** | AgentRuntime + MockEngine E2E | `mock-tool-smoke` Vitest 흡수 |
+| **T5** | RN 컴포넌트 | jest-expo + Testing Library |
+| **T6** | 스모크 스크립트 제거 | `mock-smoke`/`mock-tool-smoke` 삭제 |
+| **T7** | Maestro (선택) | mock mode 채팅 1-flow |
+| **T8** | Kotlin/Swift (선택) | Robolectric/XCTest 핵심 1–2건 |
+
+상세 테스트 케이스: [apps/mobile/DESIGN.md](./apps/mobile/DESIGN.md) §10 · [packages/litertlm-native/DESIGN.md](./packages/litertlm-native/DESIGN.md) §테스트.
+
+### T0 — 인프라 (1–2일)
+
+| # | 작업 | 산출물 |
+|---|------|--------|
+| T0.1 | 루트 `package.json` — `test`, `typecheck` 스크립트 | `pnpm test` = 전 워크스페이스 |
+| T0.2 | `packages/litertlm-native` — Vitest + `test` 스크립트 | `vitest.config.ts`, `src/**/*.test.ts` |
+| T0.3 | `apps/mobile` — Vitest(node) + Jest(jest-expo) 이중 설정 또는 Vitest 통합 | `test` 스크립트 |
+| T0.4 | `.github/workflows/ci.yml` — Node 20, `pnpm i`, `test`, `typecheck` | PR 게이트 |
+| T0.5 | 첫 통과 테스트 1건 (스캐폴딩 검증) | `PromptTemplateEngine.test.ts` Red→Green |
+
+### T1 — `litertlm-native` (의존성 순)
+
+| 순서 | 소스 | 테스트 파일 | 핵심 케이스 (§) |
+|------|------|-------------|----------------|
+| 1 | `src/mock/TokenBatcher.ts` | `TokenBatcher.test.ts` | maxTokens flush, interval flush, kind 경계 flush (§1.7) |
+| 2 | `src/conversationConfigJson.ts` | `conversationConfigJson.test.ts` | `automaticToolCalling` 기본 true, sampler 직렬화 |
+| 3 | `src/mock/mockToolTriggers.ts` | `mockToolTriggers.test.ts` | time/url/device 트리거 매칭 |
+| 4 | `src/mock/MockEngine.ts` | `MockEngine.test.ts` | streaming, `onMessageComplete`, thinking chunk |
+| 5 | `src/mock/MockEngine.ts` (tools) | `MockEngine.tools.test.ts` | read / approval / manual loop (§1.10) — **mock-tool-smoke 흡수** |
+| 6 | `src/verifySha256.ts` | `verifySha256.test.ts` | native unavailable 시 JS fallback 표면 (mock) |
+| 7 | `src/LitertLm.types.ts` | — | 타입만; 런타임 테스트 불필요 |
+
+`NativeEngine.ts` / `LitertLmModule.ts`: Expo native binding — **T4 AgentRuntime 통합**으로 간접 검증.
+
+### T2 — `apps/mobile` 순수 로직 (의존성 순)
+
+| 순서 | 소스 | 테스트 파일 | 핵심 케이스 (§) |
+|------|------|-------------|----------------|
+| 1 | `src/agent/PromptTemplateEngine.ts` | `PromptTemplateEngine.test.ts` | default system, custom instruction, `enable_thinking` extraContext (§1.9) |
+| 2 | `src/agent/StreamChunk.ts` | `StreamChunk.test.ts` | token/thinking/complete 파싱·누적 |
+| 3 | `src/agent/tools/types.ts` + `registry.ts` | `registry.test.ts` | register, duplicate, policy lookup |
+| 4 | `src/agent/tools/builtins.ts` | `builtins.test.ts` | read/write/destructive 분류 (§1.10) |
+| 5 | `src/models/manifest.ts` | `manifest.test.ts` | E2B/E4B sha256·minRamMb 존재 |
+| 6 | `src/models/deviceRam.ts` | `deviceRam.test.ts` | RAM gate — mock `totalMemory` |
+| 7 | `src/models/verifyModel.ts` | `verifyModel.test.ts` | corrupt hash → fail; match → ok (§1.8) |
+| 8 | `src/agent/MessageReplayer.ts` | `MessageReplayer.test.ts` | user turn count, empty skip, replay 호출 횟수 |
+| 9 | `src/agent/deviceProfile.ts` | `deviceProfile.test.ts` | backend·RAM 프로필 선택 |
+| 10 | `src/benchmark/runBenchmark.ts` | `runBenchmark.test.ts` | 메트릭 집계·에러 경로 |
+| 11 | `src/native/safeExpoDevice.ts` | `safeExpoDevice.test.ts` | expo-device 없을 때 fallback |
+
+### T3 — 상태·I/O 레이어
+
+| 순서 | 소스 | 테스트 파일 | 핵심 케이스 (§) |
+|------|------|-------------|----------------|
+| 1 | `src/storage/SessionStore.ts` | `SessionStore.test.ts` | save/load, corrupt JSON, multi-session |
+| 2 | `src/models/ModelPreferences.ts` | `ModelPreferences.test.ts` | selected model persist |
+| 3 | `src/agent/AgentPreferences.ts` | `AgentPreferences.test.ts` | automaticToolCalling toggle |
+| 4 | `src/models/ModelManager.ts` | `ModelManager.test.ts` | download state machine, verify gate (§1.8) |
+| 5 | `src/agent/InferenceCoordinator.ts` | `InferenceCoordinator.test.ts` | AppState active→warmUp, idle timer, hibernate (§1.12) |
+
+### T4 — AgentRuntime 통합
+
+| 순서 | 소스 | 테스트 파일 | 핵심 케이스 |
+|------|------|-------------|-------------|
+| 1 | `src/agent/AgentRuntime.ts` | `AgentRuntime.test.ts` | MockEngine send, tool approval flow, abort, restore+replay |
+
+### T5 — RN 컴포넌트 (jest-expo)
+
+| 순서 | 소스 | 테스트 파일 | 핵심 케이스 |
+|------|------|-------------|-------------|
+| 1 | `src/components/ThinkingBlock.tsx` | `ThinkingBlock.test.tsx` | collapsed/expanded, streaming text |
+| 2 | `src/components/ToolApprovalSheet.tsx` | `ToolApprovalSheet.test.tsx` | approve/deny 콜백 |
+| 3 | `src/components/ChatInput.tsx` | `ChatInput.test.tsx` | submit, disabled during stream |
+| 4 | `src/components/ChatMessageList.tsx` | `ChatMessageList.test.tsx` | user/assistant/thinking 렌더 |
+
+`app/(tabs)/**`: 라우터 화면 — T5 후 **Maestro(T7)** 또는 snapshot 최소화.
+
+### T6–T8 — 정리·확장
+
+- **T6:** `scripts/mock-smoke.ts`, `mock-tool-smoke.ts` 삭제; DESIGN Commands 갱신.
+- **T7:** `.maestro/flows/mock-chat.yaml` — mock mode 1-turn (선택, Phase 3 전).
+- **T8:** `TokenBatcher.kt/swift`, `Sha256Verifier` — 플랫폼 단위 1건씩 (선택).
+
+### Phase 3+ TDD 규칙
+
+Phase 3 작업(예: `SKILL.md` parser)은 ROADMAP 항목마다 **테스트 파일 경로를 먼저 PR에 포함**한다. 구현 PR에 테스트 diff가 없으면 merge 불가 (ARCHITECTURE §1.13).
 
 ---
 
@@ -172,12 +275,12 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 - [ ] 10-turn conversation without crash
 - [x] Tool call round-trip < 5s (simple native tool) — `getCurrentTime` live ✅ (manual)
 - [ ] Zero network during inference (packet capture spot check)
-- [ ] Mock mode: chat UI full flow without model load
-- [ ] Download corrupt file → verify fails → Engine never called
+- [ ] Mock mode: chat UI full flow without model load — **T4 AgentRuntime + T7 Maestro**
+- [ ] Download corrupt file → verify fails → Engine never called — **T2 `verifyModel` + T3 ModelManager**
 - [ ] E2B post-download SHA-256 verify: native path (1.12) — 실기기에서 download 대비 체감 지연 없음 (에뮬레이터 JS interim은 제외)
 - [ ] Stream UI: no jank at 50+ tok/s decode (batched deltas)
-- [ ] Background → Idle; memory warning → Hibernated (no crash)
-- [ ] Restore from KV snapshot: 10-turn session TTFT < restore-from-scratch prefill case
+- [ ] Background → Idle; memory warning → Hibernated (no crash) — **T3 InferenceCoordinator + T8 native**
+- [ ] Restore from KV snapshot: 10-turn session TTFT < restore-from-scratch prefill case — **T4 + manual**
 
 ---
 
@@ -190,5 +293,9 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 5. ~~Phase 2 S3~~ ✅ — E4B RAM gate + abort + Benchmark (2026-06-06)
 6. ~~Phase 2 S3 iOS live E2E~~ ✅ — iPhone 16e (2026-06-06)
 7. ~~Phase 2 S3 Android live E2E~~ ✅ — `liteRTLM_E2B` AVD (2026-06-06)
-8. **Phase 2 S4:** KV persist/hibernate stack + Snapshot UI + Smart Eviction
-9. Mock regression: `pnpm litertlm-native mock-tool-smoke` · Thinking ON in Settings
+8. ~~Phase 2 S4~~ ✅ — KV persist/hibernate stack + Snapshot UI + Smart Eviction (2026-06-06)
+9. ~~Phase 2 S4 iOS live E2E~~ ✅ — iPhone 16e: build + hibernate/restore (2026-06-06)
+10. ~~**TDD Wave T0–T6**~~ ✅ — Vitest/Jest + CI + 레거시 회귀 + mock-smoke 흡수 (2026-06-06)
+11. **Phase 3 kickoff** — Skills registry + `SKILL.md` parser (**테스트 선행**)
+12. **TDD T7 (선택)** — Maestro `.maestro/flows/mock-chat.yaml` on device
+13. **TDD T8 (선택)** — Kotlin `ConversationConfigJson` JUnit

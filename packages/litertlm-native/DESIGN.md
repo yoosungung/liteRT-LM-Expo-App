@@ -242,18 +242,38 @@ Gallery는 RN이 아니므로 **API 호출 순서·config만** 참고.
 
 ---
 
+## 테스트·TDD (필수)
+
+계약: [ARCHITECTURE.md](../../ARCHITECTURE.md) §1.13 · 순서: [ROADMAP.md](../../ROADMAP.md) T1.
+
+**규칙:** `src/` JS/TS 변경은 `*.test.ts` 동반. `scripts/mock-*.ts`는 Wave T6에서 Vitest로 흡수 후 삭제.
+
+### 파일 매트릭스
+
+| ⬜ | 소스 | 테스트 | 필수 `it` 케이스 |
+|----|------|--------|------------------|
+| ✅ | `src/mock/TokenBatcher.ts` | `TokenBatcher.test.ts` | 8토큰 즉시 flush; 50ms 타이머 flush; kind 변경 시 flush (§1.7) |
+| ✅ | `src/conversationConfigJson.ts` | `conversationConfigJson.test.ts` | `automaticToolCalling` 기본 true; sampler 필드 |
+| ✅ | `src/mock/mockToolTriggers.ts` | `mockToolTriggers.test.ts` | time/url/device 키워드 매칭 |
+| ✅ | `src/mock/MockEngine.ts` | `MockEngine.test.ts` | initialize→send→complete; thinking stream |
+| ✅ | `src/mock/MockEngine.ts` | `MockEngine.tools.test.ts` | read auto; `openUrl` approval; manual `onToolCall` (§1.10) |
+| ✅ | `src/verifySha256.ts` | `verifySha256.test.ts` | `isNativeSha256VerifyAvailable` 분기 |
+
+**간접 검증 (T4):** `NativeEngine.ts`, `LitertLmModule.ts` — `apps/mobile` AgentRuntime 통합 테스트.
+
+**Native (T8, 선택):** `android/.../TokenBatcher.kt`, `ios/TokenBatcher.swift`, `Sha256Verifier` — 플랫폼별 1 suite.
+
+---
+
 ## Commands
 
 ```bash
 # monorepo root
 pnpm install
 
-# TypeScript
+# TypeScript / test
 pnpm litertlm-native typecheck
-
-# Mock streaming smoke (no native module)
-pnpm litertlm-native mock-smoke
-pnpm litertlm-native mock-tool-smoke
+pnpm litertlm-native test
 
 # Native module is autolinked from apps/mobile via workspace:*
 # Rebuild dev client after Kotlin/Swift changes:

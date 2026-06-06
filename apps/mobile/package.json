@@ -8,7 +8,10 @@
     "android": "JAVA_HOME=\"${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home}\" expo run:android --device liteRTLM_E2B",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run && jest --ci",
+    "test:unit": "vitest run",
+    "test:components": "jest --ci"
   },
   "dependencies": {
     "@noble/hashes": "^1.8.0",
@@ -30,7 +33,13 @@
     "react-native-screens": "4.25.2"
   },
   "devDependencies": {
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^13.2.0",
+    "@types/jest": "^29.5.14",
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "jest": "^29.7.0",
+    "jest-expo": "~56.0.4",
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.4"
   }
 }

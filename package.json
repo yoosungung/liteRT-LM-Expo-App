@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "scripts": {
     "mobile": "pnpm --filter mobile",
-    "litertlm-native": "pnpm --filter litertlm-native"
+    "litertlm-native": "pnpm --filter litertlm-native",
+    "test": "pnpm -r run test",
+    "typecheck": "pnpm -r run typecheck"
   },
   "engines": {
     "node": ">=20"

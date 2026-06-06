@@ -33,8 +33,8 @@ ROADMAP.md                   # Phase별 구현 계획
 
 | 문서 | 용도 |
 |------|------|
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | 불변 계약, Bridge/Agent API |
-| [ROADMAP.md](./ROADMAP.md) | Phase 0–4 마일스톤 |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 불변 계약, Bridge/Agent API (**§1.13 TDD**) |
+| [ROADMAP.md](./ROADMAP.md) | Phase 0–4 + **TDD Rollout** |
 | [.references/](./.references/) | Expo, LiteRT-LM, Gallery 참조 |
 | [apps/mobile/DESIGN.md](./apps/mobile/DESIGN.md) | 모바일 앱 내부 설계 |
 | [packages/litertlm-native/DESIGN.md](./packages/litertlm-native/DESIGN.md) | 네이티브 모듈 설계 |
@@ -60,7 +60,16 @@ pnpm mobile android        # dev client (첫 빌드는 시간 소요)
 
 앱 화면에서 **Send (mock)** → 스트리밍 응답 확인 (모델 파일 불필요).
 
-### 2. LiteRT-LM CLI로 모델 확인 (선택)
+### 2. 테스트 (TDD — Wave T0+)
+
+```bash
+pnpm test          # 전 워크스페이스 (Vitest/Jest)
+pnpm typecheck     # TypeScript
+```
+
+신규·변경 로직은 **테스트 선행** ([ARCHITECTURE.md](./ARCHITECTURE.md) §1.13). 롤아웃 순서: [ROADMAP.md](./ROADMAP.md) TDD Rollout.
+
+### 3. LiteRT-LM CLI로 모델 확인 (선택)
 
 ```bash
 # LiteRT-LM CLI 설치 후 (HF gated repo)
@@ -71,14 +80,14 @@ litert-lm run --from-huggingface-repo=litert-community/gemma-4-E2B-it-litert-lm 
 
 자세한 절차: [.references/phase0-cli-smoke.md](./.references/phase0-cli-smoke.md)
 
-### 3. EAS development build (optional)
+### 4. EAS development build (optional)
 
 ```bash
 cd apps/mobile
 eas build --platform android --profile development
 ```
 
-### 4. Phase 1 이후 (목표)
+### 5. Phase 1 이후 (목표)
 
 1. Model Manager에서 **Gemma 4 E2B** 다운로드
 2. Backend **GPU** 선택 (지원 기기)

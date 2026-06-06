@@ -6,8 +6,7 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "mock-smoke": "npx tsx scripts/mock-smoke.ts",
-    "mock-tool-smoke": "npx tsx scripts/mock-tool-smoke.ts"
+    "test": "vitest run"
   },
   "keywords": ["expo", "litert-lm", "gemma"],
   "license": "MIT",
@@ -19,6 +18,8 @@
   "devDependencies": {
     "@expo/config-plugins": "^10.0.0",
     "expo-modules-core": "^3.0.0",
-    "tsx": "^4.20.3"
+    "tsx": "^4.20.3",
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.4"
   }
 }

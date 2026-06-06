@@ -20,7 +20,10 @@ export interface LitertLmEngine {
   enterIdle(): Promise<void>;
   hibernate(options?: { conversationIds?: string[] }): Promise<void>;
   setHibernationPolicy(policy: HibernationPolicy): void;
-  persistSession(conversationId: string): Promise<PersistResult>;
+  persistSession(
+    conversationId: string,
+    options?: { messageCount?: number },
+  ): Promise<PersistResult>;
   restoreSession(conversationId: string): Promise<RestoreResult>;
   deleteSessionSnapshot(conversationId: string): Promise<void>;
   createConversation(config: ConversationConfig): Promise<void>;

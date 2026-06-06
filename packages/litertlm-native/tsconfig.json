@@ -9,5 +9,6 @@
     "jsx": "react-native",
     "types": ["react-native"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "vitest.config.ts"]
 }

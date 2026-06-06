@@ -14,7 +14,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | `ROADMAP.md` | 수행 계획(마일스톤·순서·미결정 항목) | 루트 |
 | `<comp>/DESIGN.md` | 컴포넌트 *내부* 설계 + `## Commands` (빌드/실행/테스트) | `apps/`, `packages/` ... |
 | `.references/` | 외부 문서·레퍼런스 앱 패턴 (비계약, 참고용) | `.references/` |
-| `.github/workflows/ci.yml` | PR/push CI(apps `pytest`·`ruff`·`mypy` | `.github/workflows/` |
+| `.github/workflows/ci.yml` | PR/push CI (`pnpm test` · `pnpm typecheck`) | `.github/workflows/` |
 
 규칙:
 
@@ -28,9 +28,37 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 - 컴포넌트에 첫 코드가 들어오면, 해당 폴더의 `DESIGN.md`에 **`## Commands`** 섹션을 추가해 빌드/실행/테스트 방법을 기록한다. 그 전까지는 비워둔다(존재하지 않는 명령을 만들어 적지 않는다).
 - 한국어/영어 혼용을 허용한다. 한 문서 내 일관성만 지킨다(현재 AGENTS/ARCHITECTURE/ROADMAP/DESIGN은 한국어 본문 + 영어 식별자).
 
+### 2.1 TDD (필수 — ARCHITECTURE §1.13)
+
+**신규·변경 로직은 테스트 없이 구현하지 않는다.** 예외는 ARCHITECTURE §1.13.2 표에 한정.
+
+#### AI·인간 공통 워크플로
+
+1. **요구사항 → 실패 테스트** — `*.test.ts` / `*.test.tsx`에 `describe`·`it`으로 기대 동작을 먼저 적는다.
+2. **`pnpm test` Red 확인** — 의도적으로 실패하는지 본다.
+3. **최소 구현** — 테스트만 통과시키는 코드를 추가한다.
+4. **`pnpm test` Green** — 해당 패키지·루트 전체 통과.
+5. **리팩터** — 테스트 유지하며 정리. DESIGN.md 테스트 매트릭스에 ✅ 표시.
+
+#### 파일 배치
+
+| 패키지 | 위치 | 러너 |
+|--------|------|------|
+| `packages/litertlm-native` | `src/**/*.test.ts` | Vitest (`node`) |
+| `apps/mobile` 순수 로직 | `src/**/*.test.ts` | Vitest (`node`) |
+| `apps/mobile` RN 컴포넌트 | `src/**/*.test.tsx` | Jest + `jest-expo` |
+
+#### PR 체크리스트 (자가 검증)
+
+- [ ] ARCHITECTURE §1에 영향 있으면 **회귀 테스트** 추가
+- [ ] `pnpm test` · `pnpm typecheck` 통과
+- [x] 기존 `mock-smoke` 시나리오 Vitest 흡수 · 스크립트 삭제 ✅
+
+롤아웃 순서: [ROADMAP.md](./ROADMAP.md) **TDD Rollout** (Wave T0 → T8).
+
 ## 3. Status
 
-**Phase 2 준비 완료 (2026-06-06).** Phase 1 E2E ✅ · 계약·스켈레톤·`phase2-plan.md` kickoff.
+**Phase 2 완료 (2026-06-06).** S4 KV persist/hibernate stack ✅ · **TDD Rollout T0–T6** ✅ · Phase 3 대기.
 
 | 항목 | 상태 |
 |------|------|
@@ -59,5 +87,8 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 2 S3 | **완료** — E4B RAM gate, generation abort (native+Stop), Benchmark 탭 |
 | Phase 2 S3 iOS live E2E | **완료** — iPhone **16e** Simulator: E2B, tools, `openUrl` approval, Stop, Benchmark (manual 2026-06-06) |
 | Phase 2 S3 Android live E2E | **완료** — `liteRTLM_E2B` AVD (8GB): E2B, tools, `openUrl` approval, Stop, Benchmark (manual 2026-06-06) |
+| Phase 2 S4 | **완료** — KV snapshot metadata + message replay fallback, Smart Eviction, Snapshot UI, Idle→Hibernate |
+| Phase 2 S4 iOS live E2E | **완료** — iPhone **16e** Simulator: build, hibernate/restore, restoring UI (manual 2026-06-06) |
+| TDD T0–T6 | **완료** — `pnpm test` 103건 (Vitest+Jest) · CI · mock-smoke 흡수 |
 
-다음: **S4** — KV persist/hibernate · Snapshot UI · Smart Eviction.
+다음: **Phase 3** Skills registry + `SKILL.md` parser (순방향 TDD).

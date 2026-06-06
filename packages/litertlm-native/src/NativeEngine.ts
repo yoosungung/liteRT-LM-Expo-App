@@ -52,9 +52,11 @@ declare class ExpoLitertLmModule extends NativeModule<NativeLitertLmEvents> {
   ): Promise<void>;
   abortGeneration(conversationId: string): Promise<void>;
   enterIdle(): Promise<void>;
-  hibernate(): Promise<void>;
-  persistSession(conversationId: string): Promise<PersistResult>;
+  hibernate(conversationIds?: string[] | null): Promise<void>;
+  setHibernationPolicy(persistKvOnHibernate: boolean, hibernateOnMemoryWarning: boolean): void;
+  persistSession(conversationId: string, messageCount?: number | null): Promise<PersistResult>;
   restoreSession(conversationId: string): Promise<RestoreResult>;
+  deleteSessionSnapshot(conversationId: string): Promise<void>;
 }
 
 function loadNativeModule(): ExpoLitertLmModule {
@@ -81,6 +83,7 @@ export class NativeEngine implements LitertLmEngine {
     }
 
     this.config = config;
+    this.applyHibernationPolicyToNative();
     await this.native.initialize(modelPath, config.backend ?? 'cpu', config.cacheDir ?? null);
     this.patchStatus({
       lifecycle: (this.native.getLifecycle() as InferenceLifecycle) || 'active',
@@ -130,23 +133,25 @@ export class NativeEngine implements LitertLmEngine {
   }
 
   async hibernate(options?: { conversationIds?: string[] }): Promise<void> {
-    void options;
-    await this.native.hibernate();
+    await this.native.hibernate(options?.conversationIds ?? null);
     this.config = null;
     this.patchStatus({
       lifecycle: 'hibernated',
       activeConversationId: undefined,
-      kvSnapshotPresent: false,
+      kvSnapshotPresent: true,
     });
   }
 
   setHibernationPolicy(policy: HibernationPolicy): void {
     this.hibernationPolicy = { ...this.hibernationPolicy, ...policy };
+    this.applyHibernationPolicyToNative();
   }
 
-  async persistSession(conversationId: string): Promise<PersistResult> {
-    void this.hibernationPolicy;
-    return this.native.persistSession(conversationId);
+  async persistSession(
+    conversationId: string,
+    options?: { messageCount?: number },
+  ): Promise<PersistResult> {
+    return this.native.persistSession(conversationId, options?.messageCount ?? null);
   }
 
   async restoreSession(conversationId: string): Promise<RestoreResult> {
@@ -154,7 +159,14 @@ export class NativeEngine implements LitertLmEngine {
   }
 
   async deleteSessionSnapshot(conversationId: string): Promise<void> {
-    void conversationId;
+    await this.native.deleteSessionSnapshot(conversationId);
+  }
+
+  private applyHibernationPolicyToNative(): void {
+    this.native.setHibernationPolicy(
+      this.hibernationPolicy.persistKvOnHibernate ?? true,
+      this.hibernationPolicy.hibernateOnMemoryWarning ?? true,
+    );
   }
 
   async createConversation(config: ConversationConfig): Promise<void> {

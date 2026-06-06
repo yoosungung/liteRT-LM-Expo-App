@@ -1,0 +1,8 @@
+# T7 — mock mode chat smoke (requires dev client with EXPO_PUBLIC_LITERTLM_MODE=mock)
+appId: dev.litertlm.mobile
+---
+- launchApp
+- tapOn: "Message…"
+- inputText: "Hello mock"
+- tapOn: "Send"
+- assertVisible: "mock"

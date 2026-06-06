@@ -16,6 +16,7 @@ import { ChatMessageList } from '../../../src/components/ChatMessageList';
 import { ToolApprovalSheet } from '../../../src/components/ToolApprovalSheet';
 import { useAgentRuntime } from '../../../src/context/AgentContext';
 import type { StoredSession } from '../../../src/storage/SessionStore';
+import type { ChatPreparePhase } from '../../../src/agent/InferenceCoordinator';
 
 interface PendingApproval {
   toolCall: ToolCall;
@@ -30,7 +31,7 @@ export default function ChatScreen() {
   const [streamingText, setStreamingText] = useState('');
   const [streamingThinking, setStreamingThinking] = useState('');
   const [busy, setBusy] = useState(false);
-  const [preparing, setPreparing] = useState(false);
+  const [preparePhase, setPreparePhase] = useState<ChatPreparePhase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
   const approvalResolvers = useRef(new Map<string, () => void>());
@@ -43,6 +44,18 @@ export default function ChatScreen() {
     };
   }, []);
 
+  const runPrepare = useCallback(
+    async (loaded: StoredSession) => {
+      setPreparePhase('loading');
+      try {
+        await runtime.prepareChatSession(loaded, setPreparePhase);
+      } finally {
+        setPreparePhase(null);
+      }
+    },
+    [runtime],
+  );
+
   const loadSession = useCallback(async () => {
     if (!id || !mountedRef.current) {
       return;
@@ -54,26 +67,17 @@ export default function ChatScreen() {
     setSession(loaded);
     setError(null);
     if (loaded) {
-      setPreparing(true);
       try {
-        await runtime.ensureConversation(loaded);
-        if (!mountedRef.current) {
-          return;
-        }
-        await runtime.coordinator.onChatFocus(id);
+        await runPrepare(loaded);
       } catch (err) {
         if (!mountedRef.current) {
           return;
         }
         const message = err instanceof Error ? err.message : 'Engine not ready';
         setError(message);
-      } finally {
-        if (mountedRef.current) {
-          setPreparing(false);
-        }
       }
     }
-  }, [id, runtime]);
+  }, [id, runPrepare, runtime]);
 
   useFocusEffect(
     useCallback(() => {
@@ -91,31 +95,25 @@ export default function ChatScreen() {
         if (!loaded) {
           return;
         }
-        setPreparing(true);
         try {
-          await runtime.ensureConversation(loaded);
-          if (!active || !mountedRef.current) {
-            return;
-          }
-          await runtime.coordinator.onChatFocus(id);
+          await runPrepare(loaded);
         } catch (err) {
           if (!active || !mountedRef.current) {
             return;
           }
           const message = err instanceof Error ? err.message : 'Engine not ready';
           setError(message);
-        } finally {
-          if (active && mountedRef.current) {
-            setPreparing(false);
-          }
         }
       };
       void run();
       return () => {
         active = false;
-        void runtime.coordinator.onChatBlur(id ?? '');
+        void (async () => {
+          const current = await runtime.sessionStore.getSession(id ?? '');
+          void runtime.coordinator.onChatBlur(id ?? '', current?.messages.length ?? 0);
+        })();
       };
-    }, [id, runtime]),
+    }, [id, runPrepare, runtime]),
   );
 
   const waitForApprovalUi = (toolCall: ToolCall, riskLevel: ToolRiskLevel) =>
@@ -202,10 +200,12 @@ export default function ChatScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
       >
-        {preparing ? (
+        {preparePhase ? (
           <View style={styles.preparingBanner}>
             <ActivityIndicator size="small" color="#444" />
-            <Text style={styles.preparingText}>모델 준비 중…</Text>
+            <Text style={styles.preparingText}>
+              {preparePhase === 'restoring' ? '문맥을 복원하는 중…' : '모델 준비 중…'}
+            </Text>
           </View>
         ) : null}
         {error ? (
@@ -226,7 +226,7 @@ export default function ChatScreen() {
           onSend={send}
           onStop={() => runtime.abortGeneration(id!)}
           streaming={busy}
-          disabled={preparing || pendingApproval !== null}
+          disabled={preparePhase !== null || pendingApproval !== null}
         />
       </KeyboardAvoidingView>
       )}

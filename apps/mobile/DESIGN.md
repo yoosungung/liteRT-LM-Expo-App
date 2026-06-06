@@ -191,11 +191,74 @@ Mock-first: registry + approval sheet E2E 후 native `@Tool` parity.
 
 ---
 
-## 10. 테스트 전략 (구현 시)
+## 10. 테스트·TDD (필수)
 
-- Unit: AgentRuntime + **PromptTemplateEngine**; ModelManager verify ( corrupt file )
-- UI: **mock mode** default — Detox/Maestro without .litertlm
-- Integration: lifecycle — background → idle → hibernate → warmUp → restore
+계약: [ARCHITECTURE.md](../../ARCHITECTURE.md) §1.13 · 롤아웃 순서: [ROADMAP.md](../../ROADMAP.md) TDD Rollout.
+
+**규칙:** `src/` 순수 로직·상태 모듈은 **테스트 없이 변경·추가하지 않는다.** 레거시(Phase 1–2)는 역방향 TDD, Phase 3+는 순방향 TDD.
+
+### 10.1 러너·배치
+
+| 종류 | 경로 | 러너 |
+|------|------|------|
+| 순수 TS | `src/**/*.test.ts` | Vitest (`environment: node`) |
+| RN 컴포넌트 | `src/**/*.test.tsx` | Jest + `jest-expo` + `@testing-library/react-native` |
+
+Mock: `@react-native-async-storage/async-storage/jest/async-storage-mock`, `litertlm-native` → `MockEngine` 직접 주입.
+
+### 10.2 Wave별 파일 매트릭스
+
+상태: ✅ Green (T0–T5, 2026-06-06)
+
+#### Wave T2 — 순수 로직
+
+| ✅ | 소스 | 테스트 | 필수 `it` 케이스 |
+|----|------|--------|------------------|
+| ✅ | `src/agent/PromptTemplateEngine.ts` | `PromptTemplateEngine.test.ts` | custom `systemInstruction`; default fallback; `buildExtraContext({ thinking: true })` → `enable_thinking` |
+| ✅ | `src/agent/StreamChunk.ts` | `StreamChunk.test.ts` | `kind: token` 누적; thinking 분리; complete 시 flush |
+| ✅ | `src/agent/tools/registry.ts` | `registry.test.ts` | register·getByName; unknown tool |
+| ✅ | `src/agent/tools/builtins.ts` | `builtins.test.ts` | `getCurrentTime` read; `openUrl` write+approval |
+| ✅ | `src/models/manifest.ts` | `manifest.test.ts` | E2B/E4B `sha256`·`minRamMb` non-empty |
+| ✅ | `src/models/deviceRam.ts` | `deviceRam.test.ts` | RAM < min → blocked; RAM ≥ min → allowed |
+| ✅ | `src/models/verifyModel.ts` | `verifyModel.test.ts` | wrong digest → `{ ok: false }`; match → `{ ok: true }` (§1.8) |
+| ✅ | `src/agent/MessageReplayer.ts` | `MessageReplayer.test.ts` | `countReplayableUserTurns`; empty content skip; `replaySessionMessages` 호출 수 |
+| ✅ | `src/agent/deviceProfile.ts` | `deviceProfile.test.ts` | low-RAM → E2B default |
+| ✅ | `src/benchmark/runBenchmark.ts` | `runBenchmark.test.ts` | 성공 메트릭 shape; engine throw 시 error |
+| ✅ | `src/native/safeExpoDevice.ts` | `safeExpoDevice.test.ts` | module missing → safe default |
+
+#### Wave T3 — 상태·I/O
+
+| ✅ | 소스 | 테스트 | 필수 `it` 케이스 |
+|----|------|--------|------------------|
+| ✅ | `src/storage/SessionStore.ts` | `SessionStore.test.ts` | create·append·list; corrupt JSON recovery |
+| ✅ | `src/models/ModelPreferences.ts` | `ModelPreferences.test.ts` | get/set selectedModelId |
+| ✅ | `src/agent/AgentPreferences.ts` | `AgentPreferences.test.ts` | automaticToolCalling persist |
+| ✅ | `src/models/ModelManager.ts` | `ModelManager.test.ts` | verified 전까지 `initialize` 미호출; failed 시 파일 삭제 (§1.8) |
+| ✅ | `src/agent/InferenceCoordinator.ts` | `InferenceCoordinator.test.ts` | `active` → `warmUp`; `T_idle` → hibernate; generation 중 abort (§1.12) |
+
+#### Wave T4 — 통합
+
+| ✅ | 소스 | 테스트 | 필수 `it` 케이스 |
+|----|------|--------|------------------|
+| ✅ | `src/agent/AgentRuntime.ts` | `AgentRuntime.test.ts` | mock send 1-turn; tool approval deny/approve; `stopGeneration`; restore+`MessageReplayer` |
+
+#### Wave T5 — 컴포넌트
+
+| ✅ | 소스 | 테스트 | 필수 `it` 케이스 |
+|----|------|--------|------------------|
+| ✅ | `src/components/ThinkingBlock.tsx` | `ThinkingBlock.test.tsx` | thinking 텍스트 표시; 접기/펼치기 |
+| ✅ | `src/components/ToolApprovalSheet.tsx` | `ToolApprovalSheet.test.tsx` | Approve/Deny → callback |
+| ✅ | `src/components/ChatInput.tsx` | `ChatInput.test.tsx` | 전송; streaming 중 disabled |
+| ✅ | `src/components/ChatMessageList.tsx` | `ChatMessageList.test.tsx` | role별 bubble |
+
+`app/(tabs)/**` — T7 Maestro mock-chat flow로 보조 (단위 테스트 최소화).
+
+### 10.3 Phase 3 신규 모듈 (순방향 TDD)
+
+| 예정 소스 | 테스트 (선행) |
+|-----------|---------------|
+| `src/skills/SkillParser.ts` | `SkillParser.test.ts` — frontmatter, body merge |
+| `src/skills/registry.ts` | `registry.test.ts` — URL import validation |
 
 ---
 
@@ -204,6 +267,10 @@ Mock-first: registry + approval sheet E2E 후 native `@Tool` parity.
 ```bash
 # monorepo root
 pnpm install
+
+# TDD (Wave T0+)
+pnpm test
+pnpm typecheck
 
 # JS dev server (mock mode default in __DEV__)
 pnpm mobile start
@@ -218,8 +285,9 @@ pnpm mobile ios
 # EAS development build (set real projectId in app.json extra.eas first)
 cd apps/mobile && eas build --platform android --profile development
 
-# typecheck
+# typecheck / test (package)
 pnpm mobile typecheck
+pnpm mobile test
 pnpm litertlm-native typecheck
 ```
 

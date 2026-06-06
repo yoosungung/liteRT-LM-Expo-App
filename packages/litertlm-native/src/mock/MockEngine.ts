@@ -50,6 +50,7 @@ export class MockEngine implements LitertLmEngine {
   private responseIndex = 0;
   private pendingTools = new Map<string, PendingToolFlow>();
   private abortedGenerations = new Set<string>();
+  private snapshots = new Map<string, { messageCount: number }>();
 
   async initialize(config: EngineConfig): Promise<void> {
     await this.transition('loading');
@@ -68,7 +69,7 @@ export class MockEngine implements LitertLmEngine {
   }
 
   async warmUp(config: EngineConfig): Promise<void> {
-    if (this.status.lifecycle === 'active') {
+    if (this.status.lifecycle === 'active' || this.status.lifecycle === 'idle') {
       return;
     }
     await this.initialize(config);
@@ -81,22 +82,37 @@ export class MockEngine implements LitertLmEngine {
   }
 
   async hibernate(options?: { conversationIds?: string[] }): Promise<void> {
-    void options;
     if (this.status.lifecycle === 'unloaded') {
       return;
     }
     await this.transition('hibernating');
+    const ids =
+      options?.conversationIds?.length
+        ? options.conversationIds
+        : Array.from(this.conversations.keys());
+    if (this.hibernationPolicy.persistKvOnHibernate !== false) {
+      for (const conversationId of ids) {
+        const existing = this.snapshots.get(conversationId);
+        this.snapshots.set(conversationId, {
+          messageCount: existing?.messageCount ?? 0,
+        });
+      }
+    }
     this.conversations.clear();
     this.config = null;
-    await this.transition('hibernated', { kvSnapshotPresent: false });
+    await this.transition('hibernated', { kvSnapshotPresent: this.snapshots.size > 0 });
   }
 
   setHibernationPolicy(policy: HibernationPolicy): void {
     this.hibernationPolicy = { ...this.hibernationPolicy, ...policy };
   }
 
-  async persistSession(conversationId: string): Promise<PersistResult> {
-    void this.hibernationPolicy;
+  async persistSession(
+    conversationId: string,
+    options?: { messageCount?: number },
+  ): Promise<PersistResult> {
+    const messageCount = options?.messageCount ?? this.snapshots.get(conversationId)?.messageCount ?? 0;
+    this.snapshots.set(conversationId, { messageCount });
     return {
       conversationId,
       snapshotPath: `mock://${conversationId}.kvsnapshot`,
@@ -106,14 +122,27 @@ export class MockEngine implements LitertLmEngine {
   }
 
   async restoreSession(conversationId: string): Promise<RestoreResult> {
+    const snapshot = this.snapshots.get(conversationId);
+    const restoredFrom =
+      snapshot && snapshot.messageCount > 0
+        ? ('message_replay' as const)
+        : ('empty' as const);
+
+    await this.transition('restoring');
+    if (!this.conversations.has(conversationId) && this.status.lifecycle !== 'unloaded') {
+      this.ensureActive();
+    }
+    await this.transition('active');
+
     return {
       conversationId,
-      restoredFrom: 'empty',
+      restoredFrom,
+      prefillSkippedTokens: restoredFrom === 'message_replay' ? 0 : undefined,
     };
   }
 
   async deleteSessionSnapshot(conversationId: string): Promise<void> {
-    void conversationId;
+    this.snapshots.delete(conversationId);
   }
 
   async createConversation(config: ConversationConfig): Promise<void> {

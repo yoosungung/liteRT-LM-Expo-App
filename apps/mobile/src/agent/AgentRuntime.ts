@@ -26,8 +26,12 @@ import {
 } from './deviceProfile';
 import { createSessionId, SessionStore, type StoredSession } from '../storage/SessionStore';
 import { AgentPreferences } from './AgentPreferences';
-import { InferenceCoordinator } from './InferenceCoordinator';
-import type { AppLifecycleState } from './InferenceCoordinator';
+import {
+  InferenceCoordinator,
+  resolveIdleTimeoutMs,
+  type AppLifecycleState,
+  type ChatPreparePhase,
+} from './InferenceCoordinator';
 import { createPromptTemplateEngine } from './PromptTemplateEngine';
 import type { StreamChunk } from './StreamChunk';
 import { ToolRegistry } from './tools/registry';
@@ -80,8 +84,11 @@ export class AgentRuntime {
   constructor(engine?: LitertLmEngine) {
     this.engineConfig = defaultMockConfig();
     this.engine = engine ?? createEngine(this.engineConfig);
-    this.coordinator = new InferenceCoordinator(this.engine);
+    this.coordinator = new InferenceCoordinator(this.engine, {
+      isGenerating: () => this.generatingSessions.size > 0,
+    });
     this.coordinator.setLastEngineConfig(this.engineConfig);
+    this.applyHibernationPolicy();
   }
 
   getEngineMode(): EngineMode {
@@ -228,6 +235,7 @@ export class AgentRuntime {
     this.engine = createEngine(this.engineConfig);
     this.coordinator.setEngine(this.engine);
     this.coordinator.setLastEngineConfig(this.engineConfig);
+    this.applyHibernationPolicy();
     await this.engine.initialize(this.engineConfig);
     this.initialized = true;
   }
@@ -267,6 +275,38 @@ export class AgentRuntime {
     await this.engine.createConversation(await this.buildConversationConfig(session));
 
     return session;
+  }
+
+  async prepareChatSession(
+    session: StoredSession,
+    onPhase?: (phase: ChatPreparePhase) => void,
+  ): Promise<void> {
+    onPhase?.('loading');
+    const mode = resolveEngineMode();
+    if (mode === 'live') {
+      await this.ensureModelLoaded(session.modelId as ModelId);
+    }
+    await this.initialize();
+
+    const lifecycle = this.engine.getStatus().lifecycle;
+    if (
+      this.engineConfig.modelPath &&
+      (lifecycle === 'hibernated' || lifecycle === 'unloaded')
+    ) {
+      await this.engine.warmUp(this.engineConfig);
+    }
+
+    await this.ensureConversation(session);
+    await this.coordinator.onChatFocus(session.id, session, onPhase);
+  }
+
+  private applyHibernationPolicy(): void {
+    this.engine.setHibernationPolicy({
+      idleTimeoutMs: resolveIdleTimeoutMs(),
+      hibernateOnMemoryWarning: true,
+      persistKvOnHibernate: true,
+    });
+    this.coordinator.setIdleTimeoutMs(resolveIdleTimeoutMs());
   }
 
   async ensureConversation(session: StoredSession): Promise<void> {

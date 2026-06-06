@@ -124,6 +124,46 @@ LLM은 수백 MB~수 GB RAM을 점유한다. iOS/Android는 백그라운드·메
 - **Snapshot UI**: 마지막 채팅 화면 static snapshot → cold start instant feel.
 - **Loading skeleton**: `loading`/`restoring` 중 progressive copy ("문맥을 복원하는 중…").
 
+### 1.13 테스트·TDD (Test-First)
+
+로직 변경·신규 기능은 **테스트 선행(TDD)** 을 기본으로 한다. 수동 E2E·스모크 스크립트만으로 완료를 인정하지 않는다.
+
+#### 1.13.1 Red-Green-Refactor (필수)
+
+1. **Red** — 실패하는 자동 테스트를 먼저 작성한다 (또는 기존 테스트를 실패 상태로 갱신).
+2. **Green** — 테스트를 통과하는 최소 구현만 추가한다.
+3. **Refactor** — 동작 유지하며 중복·이름·구조를 정리한다. 리팩터 후 **전체 `pnpm test` 재실행**.
+
+버그 수정도 동일: **재현 테스트(Red) → 수정(Green)**. 재현 테스트 없이 수정만 하는 PR은 허용하지 않는다.
+
+#### 1.13.2 자동화 범위 (필수 vs 예외)
+
+| 대상 | 요구 | 실행 |
+|------|------|------|
+| `packages/litertlm-native` JS/TS (Mock, batcher, config, types) | **단위·통합 테스트 필수** | `pnpm litertlm-native test` |
+| `apps/mobile` 순수 로직 (`src/agent`, `src/models`, `src/storage`, `src/benchmark`) | **단위 테스트 필수** | `pnpm mobile test` |
+| `apps/mobile` RN 컴포넌트 | **렌더·상호작용 테스트** (Wave T5+) | `pnpm mobile test` |
+| ARCHITECTURE §1 계약 (§1.7 batching, §1.8 verify, §1.10 approval, §1.12 lifecycle) | **회귀 테스트 1건 이상** | 해당 패키지 `test` |
+| Kotlin/Swift bridge | JS Mock 통합 + (선택) Robolectric/XCTest | Wave T8 |
+| 스타일·카피·아이콘만 변경 | 테스트 생략 가능 | — |
+| `.references/`, 문서만 변경 | 테스트 생략 가능 | — |
+
+#### 1.13.3 CI·머지 게이트
+
+- PR/push 시 **`.github/workflows/ci.yml`** 이 `pnpm test` + `pnpm typecheck`(전 패키지)를 실행한다.
+- 테스트·typecheck 실패 시 merge 불가.
+- 기존 `mock-smoke` / `mock-tool-smoke` 스크립트는 **Vitest 스위트로 흡수**한 뒤 제거한다 (중복 금지).
+
+#### 1.13.4 Mock-first와 TDD
+
+§1.11 Mock backend는 **TDD 피드백 루프**에 사용한다. MockEngine·AgentRuntime 통합 테스트는 **네이티브 빌드 없이** CI에서 실행 가능해야 한다.
+
+#### 1.13.5 수동 E2E 역할
+
+에뮬레이터 live E2E(모델 다운로드, GPU, OS memory kill)는 자동 단위 테스트를 **대체하지 않는다**. Phase 완료 체크리스트의 `manual` 항목은 **Wave T0–T4 자동 테스트 완료 후** 보조 검증으로만 수행한다.
+
+구현 순서·파일별 테스트 매트릭스: [ROADMAP.md](./ROADMAP.md) TDD Rollout · [apps/mobile/DESIGN.md](./apps/mobile/DESIGN.md) §10 · [packages/litertlm-native/DESIGN.md](./packages/litertlm-native/DESIGN.md) §테스트.
+
 ---
 
 ## 2. 시스템 형태

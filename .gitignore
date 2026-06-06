@@ -12,8 +12,11 @@ dist/
 *.mobileprovision
 *.orig.*
 web-build/
-ios/
-android/
+# Expo prebuild output (generated under apps/mobile)
+apps/mobile/ios/
+apps/mobile/android/
+# Native module build artifacts
+packages/litertlm-native/android/build/
 .env
 .env.local
 .env.*.local
