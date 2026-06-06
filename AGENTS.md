@@ -30,7 +30,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 
 ## 3. Status
 
-**Phase 0 scaffold 완료 (2026-06-06).** Phase 1 Core Chat 착수 대기.
+**Phase 1 Core Chat 진행 중 (2026-06-06~).** Android 우선, mock mode default.
 
 | 항목 | 상태 |
 |------|------|
@@ -43,5 +43,8 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 0.4 mock module | `packages/litertlm-native` JS MockEngine + native skeleton |
 | Phase 0.2 CLI 스모크 | **완료** — E2B 1-turn (`Hello!`), `.references/phase0-cli-smoke.md` |
 | Phase 0.5 / 0.7 | Gallery·KV persist spike 노트 |
+| Phase 1.3 Chat UI | Expo Router, mock mode default |
+| Phase 1.1 Android bridge | LiteRT-LM Gradle + Engine bridge 골격 |
+| Phase 1.4–1.6 | ModelManager, SessionStore, PromptTemplateEngine |
 
-다음: ROADMAP Phase 1 (Android Engine bridge, Chat UI, Model Manager).
+다음: Android live Engine wiring, E2B download E2E, iOS bridge (1.8).

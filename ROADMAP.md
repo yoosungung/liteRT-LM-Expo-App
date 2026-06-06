@@ -164,6 +164,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 
 ## 다음 액션 (즉시)
 
-1. Phase 1.1: LiteRT-LM Android Engine bridge (`litertlm-android:0.13.0`)
-2. Phase 1.3: Chat UI (Expo Router) — mock mode default
-3. 로컬 Phase 0.2: `HF_TOKEN`으로 CLI E2B 스모크 (`.references/phase0-cli-smoke.md`)
+1. Phase 1.1: Android `EngineBridge` → LiteRT-LM `Engine.initialize` / `sendMessageAsync` 실연결
+2. Phase 1.4: manifest `sha256` pin + streaming verify (multi-GB)
+3. `pnpm mobile start` → Chats → New chat → mock 스트리밍 확인
+4. Android dev rebuild: `pnpm mobile android` (Kotlin bridge 변경 후)
