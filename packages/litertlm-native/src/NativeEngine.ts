@@ -52,6 +52,7 @@ declare class ExpoLitertLmModule extends NativeModule<NativeLitertLmEvents> {
     conversationId: string,
     text: string,
     extraContextJson?: string | null,
+    imagePath?: string | null,
   ): Promise<void>;
   abortGeneration(conversationId: string): Promise<void>;
   enterIdle(): Promise<void>;
@@ -192,6 +193,7 @@ export class NativeEngine implements LitertLmEngine {
     conversationId: string,
     text: string,
     extraContext?: Record<string, unknown>,
+    imagePath?: string,
   ): AsyncIterable<StreamPart> {
     const queue: StreamPart[] = [];
     let pendingResolve: (() => void) | null = null;
@@ -248,6 +250,7 @@ export class NativeEngine implements LitertLmEngine {
         conversationId,
         text,
         extraContext ? JSON.stringify(extraContext) : null,
+        imagePath ?? null,
       );
 
       while (!done || queue.length > 0) {
@@ -270,9 +273,10 @@ export class NativeEngine implements LitertLmEngine {
     conversationId: string,
     text: string,
     extraContext?: Record<string, unknown>,
+    imagePath?: string,
   ): Promise<Message> {
     let content = '';
-    for await (const chunk of this.sendMessage(conversationId, text, extraContext)) {
+    for await (const chunk of this.sendMessage(conversationId, text, extraContext, imagePath)) {
       if (chunk.kind === 'token') {
         content += chunk.delta;
       }

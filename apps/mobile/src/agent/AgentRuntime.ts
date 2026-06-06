@@ -53,6 +53,12 @@ import { RUN_JS_TOOL_DEFINITION } from '../skills/runJsTool';
 import { SkillRegistry } from '../skills/registry';
 import { SkillStore } from '../skills/SkillStore';
 import type { InstalledSkill, ParsedSkill, SkillParseResult } from '../skills/types';
+import {
+  buildUserMessageAttachments,
+  modelSupportsImage,
+  normalizeUserTurnText,
+} from '../media/imageAttachment';
+import { filterToolsByAllowed } from './tools/filterToolsByAllowed';
 import { ToolRegistry } from './tools/registry';
 import type { JsToolHandler, ToolPolicy } from './tools/types';
 
@@ -60,6 +66,11 @@ export interface SessionOptions {
   modelId?: ModelId;
   systemInstruction?: string;
   title?: string;
+}
+
+export interface SendUserMessageOptions {
+  imageUri?: string;
+  imagePath?: string;
 }
 
 interface ApprovalGate {
@@ -421,10 +432,16 @@ export class AgentRuntime {
   ) {
     const automaticToolCalling = await this.agentPreferences.getAutomaticToolCalling();
     const sampler = await this.agentPreferences.getSampler();
+    const activeSkill = activeSkillName ? this.skillRegistry.get(activeSkillName) : undefined;
+    const toolDefinitions = filterToolsByAllowed(
+      this.toolRegistry.listDefinitions(),
+      activeSkill?.frontmatter['allowed-tools'],
+      { includeRunJs: activeSkill?.kind === 'javascript' },
+    );
     return {
       conversationId: session.id,
       systemInstruction: await this.buildSystemInstructionForSession(session, activeSkillName),
-      tools: this.toolRegistry.listDefinitions(),
+      tools: toolDefinitions,
       automaticToolCalling,
       sampler,
     };
@@ -597,9 +614,14 @@ export class AgentRuntime {
     return resolved ?? 'gemma-4-e2b';
   }
 
-  async *sendUserMessage(sessionId: string, text: string): AsyncIterable<StreamChunk> {
-    const trimmed = text.trim();
-    if (!trimmed) {
+  async *sendUserMessage(
+    sessionId: string,
+    text: string,
+    options: SendUserMessageOptions = {},
+  ): AsyncIterable<StreamChunk> {
+    const hasImage = Boolean(options.imagePath);
+    const messageText = normalizeUserTurnText(text, { hasImage });
+    if (!messageText) {
       return;
     }
 
@@ -610,9 +632,14 @@ export class AgentRuntime {
       return;
     }
 
+    if (hasImage && !modelSupportsImage(session.modelId)) {
+      yield { type: 'error', message: 'Selected model does not support image input.' };
+      return;
+    }
+
     const enabledSkillNames = this.skillRegistry.listEnabledRefs().map((ref) => ref.name);
-    const invoke = detectSkillInvoke(trimmed, enabledSkillNames);
-    const messageText = invoke?.userText ?? trimmed;
+    const invoke = detectSkillInvoke(messageText, enabledSkillNames);
+    const userText = invoke?.userText ?? messageText;
 
     if (invoke?.skillName) {
       const skill = this.skillRegistry.get(invoke.skillName);
@@ -628,7 +655,8 @@ export class AgentRuntime {
     const userMessage: Message = {
       id: `${sessionId}-user-${Date.now()}`,
       role: 'user',
-      content: messageText,
+      content: userText,
+      attachments: buildUserMessageAttachments(options.imageUri),
       timestamp: Date.now(),
     };
     await this.sessionStore.appendMessage(sessionId, userMessage);
@@ -639,9 +667,10 @@ export class AgentRuntime {
 
     let assistantText = '';
     let assistantThinking = '';
-    const nativeTurn = this.promptEngine.toNativeUserTurn(messageText, session.messages);
+    const nativeTurn = this.promptEngine.toNativeUserTurn(userText, session.messages);
     const thinkingEnabled = await this.agentPreferences.getThinkingEnabled();
     const extraContext = this.promptEngine.buildExtraContext({ thinking: thinkingEnabled });
+    const imagePath = options.imagePath;
 
     this.streamChunkQueue = [];
     const streamState = { done: false, error: null as Error | null };
@@ -696,6 +725,7 @@ export class AgentRuntime {
           sessionId,
           nativeTurn,
           extraContext,
+          imagePath,
         )) {
           if (abort.signal.aborted) {
             streamState.error = new Error('Generation aborted');

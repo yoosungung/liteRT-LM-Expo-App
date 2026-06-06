@@ -134,9 +134,14 @@ class LitertlmNativeModule : Module() {
       runBlocking { engineBridge.closeConversation(conversationId) }
     }
 
-    AsyncFunction("sendMessage") { conversationId: String, text: String, extraContextJson: String? ->
+    AsyncFunction("sendMessage") {
+      conversationId: String,
+      text: String,
+      extraContextJson: String?,
+      imagePath: String?,
+      ->
       val extraContext = EngineBridge.parseExtraContext(extraContextJson)
-      engineBridge.sendMessage(conversationId, text, extraContext)
+      engineBridge.sendMessage(conversationId, text, extraContext, imagePath)
     }
 
     AsyncFunction("abortGeneration") { conversationId: String ->

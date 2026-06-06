@@ -2,6 +2,7 @@ package expo.modules.litertlmnative
 
 import android.content.Context
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
@@ -151,6 +152,7 @@ class EngineBridge(private val context: Context) {
     conversationId: String,
     text: String,
     extraContext: Map<String, Any> = emptyMap(),
+    imagePath: String? = null,
   ) {
     if (lifecycle != "active" && lifecycle != "idle") {
       onError?.invoke("ENGINE_NOT_READY", "Engine lifecycle=$lifecycle")
@@ -175,8 +177,18 @@ class EngineBridge(private val context: Context) {
       scope.launch {
         var fullResponse = ""
         try {
-          conversation
-            .sendMessageAsync(text, extraContext = extraContext)
+          val flow =
+            if (!imagePath.isNullOrBlank()) {
+              val contents =
+                Contents.of(
+                  Content.ImageFile(imagePath),
+                  Content.Text(text),
+                )
+              conversation.sendMessageAsync(contents, extraContext = extraContext)
+            } else {
+              conversation.sendMessageAsync(text, extraContext = extraContext)
+            }
+          flow
             .catch { error ->
               if (error is CancellationException) {
                 throw error

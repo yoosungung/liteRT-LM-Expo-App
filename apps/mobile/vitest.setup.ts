@@ -41,6 +41,14 @@ vi.mock('react-native', () => ({
     get: vi.fn(),
     getEnforcing: vi.fn(),
   },
+  Share: {
+    share: vi.fn(async () => ({ action: 'sharedAction' })),
+  },
+}));
+
+vi.mock('expo-clipboard', () => ({
+  setStringAsync: vi.fn(async () => undefined),
+  getStringAsync: vi.fn(async () => 'clipboard-value'),
 }));
 
 vi.mock('expo-constants', () => ({
@@ -66,6 +74,7 @@ vi.mock('expo-modules-core', () => ({
     verifyFileSha256: vi.fn(async () => ({ ok: true })),
     addListener: vi.fn(() => ({ remove: vi.fn() })),
   })),
+  requireNativeViewManager: vi.fn(() => () => null),
   EventEmitter: MockEventEmitter,
 }));
 

@@ -8,7 +8,7 @@ export default defineConfig({
     testTimeout: 60_000,
     server: {
       deps: {
-        inline: ['expo-device', 'expo-constants', 'expo-linking', 'expo-file-system'],
+        inline: ['expo-device', 'expo-constants', 'expo-linking', 'expo-file-system', 'expo-clipboard'],
       },
     },
   },

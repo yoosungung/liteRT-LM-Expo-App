@@ -188,15 +188,15 @@ idle → sending → streaming → (tool_approval_pending) → (tool_executing) 
 
 ---
 
-## 12. Phase 3 (진행 중)
+## 12. Phase 3 (완료 2026-06-06)
 
 구현 계획: [.references/phase3-plan.md](../../.references/phase3-plan.md)
 
 | 작업 | 경로 | 상태 |
 |------|------|------|
-| Skill types | `src/skills/types.ts` | ✅ kickoff |
-| SKILL.md parser | `src/skills/SkillParser.ts` | ✅ Wave 1 |
-| Skill registry | `src/skills/registry.ts` | ✅ Wave 1 |
+| Skill types | `src/skills/types.ts` | ✅ |
+| SKILL.md parser | `src/skills/SkillParser.ts` | ✅ |
+| Skill registry | `src/skills/registry.ts` | ✅ |
 | Skill catalog + invoke | `src/skills/skillCatalog.ts` | ✅ S1 |
 | Text skill merge | `PromptTemplateEngine` + `AgentRuntime` | ✅ S1 |
 | Skill import + store | `skillImport.ts`, `SkillStore.ts` | ✅ S2 |
@@ -204,9 +204,9 @@ idle → sending → streaming → (tool_approval_pending) → (tool_executing) 
 | Bundled sample | `src/skills/bundledSkills.ts` | ✅ S2 |
 | JS skill runner | `src/skills/JsSkillRunner.ts` | ✅ S3 |
 | WebView host | `src/skills/JsSkillHost.tsx` | ✅ S3 |
-| Ask Image | chat input + native Content | S4 |
-
-Mock-first: parser/registry unit tests Green → PromptTemplateEngine catalog merge → Skills UI.
+| Intent tools | `src/agent/tools/intentTools.ts` + native `@Tool` | ✅ S4 |
+| allowed-tools filter | `src/agent/tools/filterToolsByAllowed.ts` | ✅ S4 |
+| Ask Image | `src/media/pickChatImage.ts`, `imageAttachment.ts`, chat UI | ✅ S4 |
 
 ---
 
@@ -285,6 +285,10 @@ Mock: `@react-native-async-storage/async-storage/jest/async-storage-mock`, `lite
 | ✅ | `src/skills/skillImport.ts` | `skillImport.test.ts` | GitHub blob→raw; HTTPS SKILL.md fetch parse |
 | ✅ | `src/skills/JsSkillRunner.ts` | `JsSkillRunner.test.ts` | mock bridge; active skill; disabled skill |
 | ✅ | `src/skills/jsSkillBridge.ts` | `jsSkillBridge.test.ts` | Gallery `run_js` args; network gate; bridge response |
+| ✅ | `src/agent/tools/intentTools.ts` | `intentTools.test.ts` | share/clipboard handlers; approval classification |
+| ✅ | `src/agent/tools/filterToolsByAllowed.ts` | `filterToolsByAllowed.test.ts` | `allowed-tools` frontmatter filter; `run_js` keep |
+| ✅ | `src/media/imageAttachment.ts` | `imageAttachment.test.ts` | model image gate; image-only prompt default |
+| ✅ | `AgentRuntime.ts` | `AgentRuntime.test.ts` | mock multimodal `imagePath` turn |
 
 ---
 

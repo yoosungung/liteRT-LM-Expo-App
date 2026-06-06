@@ -58,7 +58,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 
 ## 3. Status
 
-**Phase 3 S3 완료 (2026-06-06).** `run_js` + JsSkillRunner + hidden WebView host ✅ · **S4 Ask Image** 대기.
+**Phase 3 완료 (2026-06-06).** S1–S4 ✅ · intent tools + Ask Image · **Phase 4** 대기.
 
 | 항목 | 상태 |
 |------|------|
@@ -94,5 +94,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 3 S1 | **완료** — `skillCatalog`, PromptTemplateEngine merge, AgentRuntime invoke |
 | Phase 3 S2 | **완료** — Skills tab, `skillImport`, `SkillStore`, bundled `fitness-coach` |
 | Phase 3 S3 | **완료** — `run_js` tool, `JsSkillRunner`, `JsSkillHost`, bundled `hash-demo` |
+| Phase 3 S3 live E2E | **완료** — iOS·Android `hash-demo` / `run_js` (manual 2026-06-06) |
+| Phase 3 S4 | **완료** — intent tools (share/clipboard), Ask Image (`Content.ImageFile`) |
 
-다음: **Phase 3 S4** — Ask Image multimodal (순방향 TDD).
+다음: **Phase 4** — MCP client (optional).

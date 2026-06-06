@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -15,6 +16,8 @@ import { ChatInput } from '../../../src/components/ChatInput';
 import { ChatMessageList } from '../../../src/components/ChatMessageList';
 import { ToolApprovalSheet } from '../../../src/components/ToolApprovalSheet';
 import { useAgentRuntime } from '../../../src/context/AgentContext';
+import { modelSupportsImage } from '../../../src/media/imageAttachment';
+import { pickChatImage } from '../../../src/media/pickChatImage';
 import type { StoredSession } from '../../../src/storage/SessionStore';
 import type { ChatPreparePhase } from '../../../src/agent/InferenceCoordinator';
 
@@ -34,6 +37,9 @@ export default function ChatScreen() {
   const [preparePhase, setPreparePhase] = useState<ChatPreparePhase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [pendingImage, setPendingImage] = useState<{ uri: string; nativePath: string } | null>(
+    null,
+  );
   const approvalResolvers = useRef(new Map<string, () => void>());
   const mountedRef = useRef(false);
 
@@ -130,8 +136,10 @@ export default function ChatScreen() {
     );
   };
 
-  const send = async () => {
-    if (!id || !input.trim() || busy) {
+  const send = async (options?: { imageUri?: string; imagePath?: string }) => {
+    const imagePath = options?.imagePath ?? pendingImage?.nativePath;
+    const imageUri = options?.imageUri ?? pendingImage?.uri;
+    if ((!input.trim() && !imagePath) || busy) {
       return;
     }
 
@@ -141,7 +149,7 @@ export default function ChatScreen() {
     setStreamingThinking('');
 
     try {
-      for await (const chunk of runtime.sendUserMessage(id, input)) {
+      for await (const chunk of runtime.sendUserMessage(id!, input, { imageUri, imagePath })) {
         if (!mountedRef.current) {
           break;
         }
@@ -163,9 +171,26 @@ export default function ChatScreen() {
       }
       if (mountedRef.current) {
         setInput('');
+        setPendingImage(null);
       }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const attachImage = async (source: 'camera' | 'library') => {
+    if (!session || busy) {
+      return;
+    }
+    try {
+      const picked = await pickChatImage(source);
+      if (picked) {
+        setPendingImage(picked);
+        setError(null);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to pick image';
+      setError(message);
     }
   };
 
@@ -213,6 +238,14 @@ export default function ChatScreen() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : null}
+        {pendingImage ? (
+          <View style={styles.pendingImageBanner}>
+            <Text style={styles.pendingImageText}>Image attached — add a prompt or send as-is.</Text>
+            <Pressable onPress={() => setPendingImage(null)}>
+              <Text style={styles.pendingImageRemove}>Remove</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <View style={styles.messages}>
           <ChatMessageList
             messages={session.messages}
@@ -223,7 +256,11 @@ export default function ChatScreen() {
         <ChatInput
           value={input}
           onChangeText={setInput}
-          onSend={send}
+          onSend={() => void send()}
+          onPickImage={() => void attachImage('library')}
+          onTakePhoto={() => void attachImage('camera')}
+          imageEnabled={modelSupportsImage(session.modelId)}
+          canSendWithMedia={pendingImage !== null}
           onStop={() => runtime.abortGeneration(id!)}
           streaming={busy}
           disabled={preparePhase !== null || pendingApproval !== null}
@@ -277,5 +314,24 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#991b1b',
+  },
+  pendingImageBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    backgroundColor: '#ecfdf5',
+    padding: 10,
+    marginHorizontal: 12,
+    marginTop: 8,
+    borderRadius: 8,
+  },
+  pendingImageText: {
+    flex: 1,
+    color: '#065f46',
+  },
+  pendingImageRemove: {
+    color: '#047857',
+    fontWeight: '600',
   },
 });

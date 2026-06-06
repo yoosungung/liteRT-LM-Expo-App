@@ -223,16 +223,16 @@ Phase 3 작업(예: `SKILL.md` parser)은 ROADMAP 항목마다 **테스트 파�
 - [x] 3.2 Text skills — `PromptTemplateEngine` catalog merge + slash invoke
 - [x] 3.6 Skills tab UI + URL import
 - [x] 3.3 JS skills WebView runner
-- [ ] 3.4 Native intent tools
-- [ ] 3.5 Ask Image multimodal
+- [x] 3.4 Native intent tools
+- [x] 3.5 Ask Image multimodal
 
 | # | 작업 | Wave |
 |---|------|------|
 | 3.1 | `SKILL.md` 파서 + skill registry | 1 ✅ |
 | 3.2 | Text-only skills (system prompt merge) | 1 ✅ |
 | 3.3 | JS skills — hidden WebView (`ai_edge_gallery_get_result` 호환) | 2 ✅ |
-| 3.4 | Native intent tools (expo-linking, share, clipboard) | 2 |
-| 3.5 | Ask Image — camera/gallery → `Content.ImageFile` | 3 |
+| 3.4 | Native intent tools (expo-linking, share, clipboard) | 2 ✅ |
+| 3.5 | Ask Image — camera/gallery → `Content.ImageFile` | 3 ✅ |
 | 3.6 | Skill marketplace UI (URL import) | 2 ✅ |
 
 **레퍼런스:** [.references/gallery-agent-skills.md](./.references/gallery-agent-skills.md)
@@ -315,6 +315,6 @@ Phase 3 작업(예: `SKILL.md` parser)은 ROADMAP 항목마다 **테스트 파�
 12. ~~**Phase 3 S1**~~ ✅ — skill catalog merge + `/skill-name` invoke (2026-06-06)
 13. ~~**Phase 3 S2**~~ ✅ — Skills tab + URL import + AsyncStorage persist (2026-06-06)
 14. ~~**Phase 3 S3**~~ ✅ — JS skills WebView + `run_js` tool + bundled `hash-demo` (2026-06-06)
-15. **Phase 3 S4** — Ask Image multimodal (`Content.ImageFile`)
+15. ~~**Phase 3 S4**~~ ✅ — Native intent tools + Ask Image multimodal (2026-06-06)
 16. **TDD T7 (선택)** — Maestro `.maestro/flows/mock-chat.yaml` on device
 17. **TDD T8 (선택)** — Kotlin `ConversationConfigJson` JUnit

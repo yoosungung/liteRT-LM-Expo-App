@@ -147,12 +147,13 @@ public class LitertlmNativeModule: Module {
     }
 
     AsyncFunction("sendMessage") {
-      (conversationId: String, text: String, extraContextJson: String?) in
+      (conversationId: String, text: String, extraContextJson: String?, imagePath: String?) in
       let extraContext = EngineBridge.parseExtraContext(extraContextJson)
       self.engineBridge.sendMessage(
         conversationId: conversationId,
         text: text,
-        extraContext: extraContext
+        extraContext: extraContext,
+        imagePath: imagePath
       )
     }
 

@@ -90,12 +90,18 @@ export interface ConversationConfig {
   automaticToolCalling?: boolean;
 }
 
+export interface MessageAttachment {
+  type: 'image';
+  uri: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'tool';
   content: string;
   thinking?: string;
   toolCalls?: ToolCall[];
+  attachments?: MessageAttachment[];
   timestamp: number;
 }
 

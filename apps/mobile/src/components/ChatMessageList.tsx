@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
 import type { Message } from 'litertlm-native';
 
 import { ThinkingBlock } from './ThinkingBlock';
@@ -63,6 +63,16 @@ export function ChatMessageList({
               defaultExpanded={item.id === 'streaming'}
             />
           ) : null}
+          {item.attachments?.map((attachment, index) =>
+            attachment.type === 'image' ? (
+              <Image
+                key={`${item.id}-attachment-${index}`}
+                source={{ uri: attachment.uri }}
+                style={styles.imageAttachment}
+                accessibilityLabel="User attached image"
+              />
+            ) : null,
+          )}
           <Text style={item.role === 'user' ? styles.userText : styles.assistantText}>
             {item.content}
             {item.id === 'streaming' && item.content ? '▍' : ''}
@@ -110,5 +120,12 @@ const styles = StyleSheet.create({
   assistantText: {
     color: '#111',
     lineHeight: 22,
+  },
+  imageAttachment: {
+    width: 180,
+    height: 180,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#eee',
   },
 });

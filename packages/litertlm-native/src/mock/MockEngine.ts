@@ -162,6 +162,7 @@ export class MockEngine implements LitertLmEngine {
     conversationId: string,
     text: string,
     extraContext?: Record<string, unknown>,
+    imagePath?: string,
   ): AsyncIterable<StreamPart> {
     this.ensureActive();
     try {
@@ -254,7 +255,9 @@ export class MockEngine implements LitertLmEngine {
       ? 'The tool call was denied by the user.'
       : toolResult
         ? this.formatToolResponse(text, toolResult, trigger!)
-        : this.pickResponse(text, mock);
+        : imagePath
+          ? `I see the image you shared. ${this.pickResponse(text, mock)}`
+          : this.pickResponse(text, mock);
 
     let full = '';
     for await (const chunk of this.streamWithBatcher(response, batchConfig, tokensPerSecond, 'token', conversationId)) {
@@ -282,9 +285,10 @@ export class MockEngine implements LitertLmEngine {
     conversationId: string,
     text: string,
     extraContext?: Record<string, unknown>,
+    imagePath?: string,
   ): Promise<Message> {
     let content = '';
-    for await (const chunk of this.sendMessage(conversationId, text, extraContext)) {
+    for await (const chunk of this.sendMessage(conversationId, text, extraContext, imagePath)) {
       if (chunk.kind === 'token') {
         content += chunk.delta;
       }

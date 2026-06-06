@@ -1,5 +1,7 @@
 package expo.modules.litertlmnative
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -108,6 +110,104 @@ class DeviceToolSet(
       }
 
     return parseRunJsResult(resultJson)
+  }
+
+  @Tool(description = "Share plain text via the system share sheet.")
+  fun shareText(
+    @ToolParam(description = "Text to share") text: String,
+    @ToolParam(description = "Optional share dialog title (Android)") title: String? = null,
+  ): Map<String, Any> {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) {
+      return mapOf("shared" to false, "error" to "Text is required")
+    }
+
+    val toolCallId = "$conversationId-tool-shareText-${System.currentTimeMillis()}"
+    val argumentsJson =
+      JSONObject().apply {
+        put("text", trimmed)
+        title?.takeIf { it.isNotBlank() }?.let { put("title", it) }
+      }.toString()
+
+    val approved =
+      kotlinx.coroutines.runBlocking {
+        approvalGate.awaitApproval(toolCallId) {
+          onApprovalRequired(
+            conversationId,
+            toolCallId,
+            "shareText",
+            argumentsJson,
+            "destructive",
+          )
+        }
+      }
+
+    if (!approved) {
+      return mapOf("shared" to false, "error" to "User denied")
+    }
+
+    return try {
+      val intent =
+        Intent(Intent.ACTION_SEND).apply {
+          type = "text/plain"
+          putExtra(Intent.EXTRA_TEXT, trimmed)
+          title?.takeIf { it.isNotBlank() }?.let { putExtra(Intent.EXTRA_TITLE, it) }
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+      val chooser =
+        Intent.createChooser(intent, title ?: "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      context.startActivity(chooser)
+      mapOf("shared" to true)
+    } catch (error: Exception) {
+      mapOf("shared" to false, "error" to (error.message ?: "Failed to share text"))
+    }
+  }
+
+  @Tool(description = "Copy plain text to the system clipboard.")
+  fun copyToClipboard(
+    @ToolParam(description = "Text to copy") text: String,
+  ): Map<String, Any> {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) {
+      return mapOf("copied" to false, "error" to "Text is required")
+    }
+
+    val toolCallId = "$conversationId-tool-copyToClipboard-${System.currentTimeMillis()}"
+    val argumentsJson = JSONObject().apply { put("text", trimmed) }.toString()
+
+    val approved =
+      kotlinx.coroutines.runBlocking {
+        approvalGate.awaitApproval(toolCallId) {
+          onApprovalRequired(
+            conversationId,
+            toolCallId,
+            "copyToClipboard",
+            argumentsJson,
+            "write",
+          )
+        }
+      }
+
+    if (!approved) {
+      return mapOf("copied" to false, "error" to "User denied")
+    }
+
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("text", trimmed))
+    return mapOf("copied" to true)
+  }
+
+  @Tool(description = "Read plain text from the system clipboard.")
+  fun readClipboard(): Map<String, Any> {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = clipboard.primaryClip
+    val value =
+      if (clip != null && clip.itemCount > 0) {
+        clip.getItemAt(0).coerceToText(context).toString()
+      } else {
+        ""
+      }
+    return mapOf("text" to value)
   }
 
   private fun parseRunJsResult(resultJson: String): Map<String, Any> {

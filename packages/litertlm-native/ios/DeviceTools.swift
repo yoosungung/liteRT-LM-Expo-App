@@ -43,7 +43,15 @@ enum BuiltinToolContext {
   }
 
   static func builtinTools() -> [Tool] {
-    [GetCurrentTimeTool(), GetDeviceInfoTool(), OpenUrlTool(), RunJsTool()]
+    [
+      GetCurrentTimeTool(),
+      GetDeviceInfoTool(),
+      OpenUrlTool(),
+      RunJsTool(),
+      ShareTextTool(),
+      CopyToClipboardTool(),
+      ReadClipboardTool(),
+    ]
   }
 }
 
@@ -177,6 +185,121 @@ struct RunJsTool: Tool {
       return obj
     }
     return ["raw": resultJson]
+  }
+}
+
+struct ShareTextTool: Tool {
+  static let name = "shareText"
+  static let description = "Share plain text via the system share sheet."
+
+  @ToolParam(description: "Text to share")
+  var text: String
+
+  @ToolParam(description: "Optional share dialog title")
+  var title: String
+
+  init() {
+    self.text = ""
+    self.title = ""
+  }
+
+  func run() async throws -> Any {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      return ["shared": false, "error": "Text is required"]
+    }
+
+    let conversationId = BuiltinToolContext.conversationId
+    let toolCallId = "\(conversationId)-tool-shareText-\(Int(Date().timeIntervalSince1970 * 1000))"
+    var args: [String: Any] = ["text": trimmed]
+    if !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      args["title"] = title
+    }
+    let argumentsJson =
+      String(data: try JSONSerialization.data(withJSONObject: args), encoding: .utf8) ?? "{}"
+
+    let approved = await BuiltinToolContext.approvalGate.awaitApproval(toolCallId: toolCallId) {
+      BuiltinToolContext.onApprovalRequired(
+        conversationId, toolCallId, Self.name, argumentsJson, "destructive"
+      )
+    }
+
+    if !approved {
+      return ["shared": false, "error": "User denied"]
+    }
+
+    await MainActor.run {
+      let activityVC = UIActivityViewController(activityItems: [trimmed], applicationActivities: nil)
+      guard
+        let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+        let root = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController
+      else {
+        return
+      }
+      var presenter = root
+      while let presented = presenter.presentedViewController {
+        presenter = presented
+      }
+      presenter.present(activityVC, animated: true)
+    }
+
+    return ["shared": true]
+  }
+}
+
+struct CopyToClipboardTool: Tool {
+  static let name = "copyToClipboard"
+  static let description = "Copy plain text to the system clipboard."
+
+  @ToolParam(description: "Text to copy")
+  var text: String
+
+  init() {
+    self.text = ""
+  }
+
+  func run() async throws -> Any {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      return ["copied": false, "error": "Text is required"]
+    }
+
+    let conversationId = BuiltinToolContext.conversationId
+    let toolCallId = "\(conversationId)-tool-copyToClipboard-\(Int(Date().timeIntervalSince1970 * 1000))"
+    let argumentsJson =
+      String(
+        data: try JSONSerialization.data(withJSONObject: ["text": trimmed]),
+        encoding: .utf8
+      ) ?? "{}"
+
+    let approved = await BuiltinToolContext.approvalGate.awaitApproval(toolCallId: toolCallId) {
+      BuiltinToolContext.onApprovalRequired(
+        conversationId, toolCallId, Self.name, argumentsJson, "write"
+      )
+    }
+
+    if !approved {
+      return ["copied": false, "error": "User denied"]
+    }
+
+    await MainActor.run {
+      UIPasteboard.general.string = trimmed
+    }
+    return ["copied": true]
+  }
+}
+
+struct ReadClipboardTool: Tool {
+  static let name = "readClipboard"
+  static let description = "Read plain text from the system clipboard."
+
+  init() {}
+
+  func run() async throws -> Any {
+    let value = await MainActor.run {
+      UIPasteboard.general.string ?? ""
+    }
+    return ["text": value]
   }
 }
 

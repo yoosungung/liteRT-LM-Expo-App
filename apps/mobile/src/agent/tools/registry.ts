@@ -1,6 +1,7 @@
 import type { ToolDefinition } from 'litertlm-native';
 
 import { createBuiltinJsTools } from './builtins';
+import { createIntentJsTools } from './intentTools';
 import type { JsToolHandler, RegisteredTool, ToolPolicy } from './types';
 import { defaultRequiresApproval } from './types';
 
@@ -8,7 +9,7 @@ export class ToolRegistry {
   private tools = new Map<string, RegisteredTool>();
 
   constructor() {
-    for (const tool of createBuiltinJsTools()) {
+    for (const tool of [...createBuiltinJsTools(), ...createIntentJsTools()]) {
       this.tools.set(tool.definition.name, tool);
     }
   }

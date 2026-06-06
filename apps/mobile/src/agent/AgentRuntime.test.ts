@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { MockEngine, type ConversationConfig } from 'litertlm-native';
 
-import { AgentRuntime } from './AgentRuntime';
+import { AgentRuntime, type SendUserMessageOptions } from './AgentRuntime';
 
-async function collectStream(runtime: AgentRuntime, sessionId: string, text: string) {
+async function collectStream(
+  runtime: AgentRuntime,
+  sessionId: string,
+  text: string,
+  options?: SendUserMessageOptions,
+) {
   const chunks = [];
-  for await (const chunk of runtime.sendUserMessage(sessionId, text)) {
+  for await (const chunk of runtime.sendUserMessage(sessionId, text, options)) {
     chunks.push(chunk);
   }
   return chunks;
@@ -178,5 +183,23 @@ description: Summarizes topics using concise bullet points.
       .join('');
 
     expect(text).toContain('hash-demo:olleh');
+  });
+
+  it('sendUserMessage with imagePath uses mock multimodal response', async () => {
+    const runtime = new AgentRuntime(new MockEngine());
+    const session = await runtime.createSession();
+    const chunks = await collectStream(runtime, session.id, '', {
+      imagePath: '/tmp/mock-image.jpg',
+      imageUri: 'file:///tmp/mock-image.jpg',
+    });
+
+    const text = chunks
+      .filter((c) => c.type === 'token')
+      .map((c) => (c.type === 'token' ? c.text : ''))
+      .join('');
+
+    expect(text).toContain('I see the image you shared');
+    const stored = await runtime.sessionStore.getSession(session.id);
+    expect(stored?.messages.at(-2)?.attachments?.[0]?.uri).toBe('file:///tmp/mock-image.jpg');
   });
 });

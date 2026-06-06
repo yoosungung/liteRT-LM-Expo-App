@@ -11,6 +11,13 @@
       "expo-router",
       "expo-dev-client",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow liteRTLM to access your photos for Ask Image.",
+          "cameraPermission": "Allow liteRTLM to use the camera for Ask Image."
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
@@ -26,7 +33,12 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.litertlm.mobile"
+      "bundleIdentifier": "dev.litertlm.mobile",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Allow liteRTLM to access your photos for Ask Image.",
+        "NSPhotoLibraryAddUsageDescription": "Allow liteRTLM to save images to your photo library.",
+        "NSCameraUsageDescription": "Allow liteRTLM to use the camera for Ask Image."
+      }
     },
     "android": {
       "package": "dev.litertlm.mobile",

@@ -177,7 +177,8 @@ final class EngineBridge {
   func sendMessage(
     conversationId: String,
     text: String,
-    extraContext: [String: Any] = [:]
+    extraContext: [String: Any] = [:],
+    imagePath: String? = nil
   ) {
     if lifecycle != "active" && lifecycle != "idle" {
       onError?("ENGINE_NOT_READY", "Engine lifecycle=\(lifecycle)")
@@ -198,7 +199,12 @@ final class EngineBridge {
     let task = Task {
       var fullResponse = ""
       do {
-        for try await chunk in conversation.sendMessageStream(Message(text), extraContext: extraContext) {
+        for try await chunk in conversation.sendMessageStream(
+          imagePath?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? Message(of: .imageFile(imagePath!), .text(text))
+            : Message(text),
+          extraContext: extraContext
+        ) {
           if Task.isCancelled {
             throw CancellationError()
           }

@@ -5,6 +5,10 @@ interface ChatInputProps {
   onChangeText: (text: string) => void;
   onSend: () => void;
   onStop?: () => void;
+  onPickImage?: () => void;
+  onTakePhoto?: () => void;
+  imageEnabled?: boolean;
+  canSendWithMedia?: boolean;
   disabled?: boolean;
   streaming?: boolean;
   placeholder?: string;
@@ -15,15 +19,37 @@ export function ChatInput({
   onChangeText,
   onSend,
   onStop,
+  onPickImage,
+  onTakePhoto,
+  imageEnabled = false,
+  canSendWithMedia = false,
   disabled,
   streaming,
   placeholder = 'Message…',
 }: ChatInputProps) {
-  const canSend = !disabled && !streaming && value.trim().length > 0;
+  const canSend = !disabled && !streaming && (value.trim().length > 0 || canSendWithMedia);
   const canStop = streaming && !disabled && onStop;
 
   return (
     <View style={styles.row}>
+      {imageEnabled ? (
+        <View style={styles.mediaActions}>
+          <Pressable
+            style={[styles.mediaButton, (disabled || streaming) && styles.mediaButtonDisabled]}
+            onPress={onPickImage}
+            disabled={disabled || streaming}
+          >
+            <Text style={styles.mediaButtonLabel}>Photo</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.mediaButton, (disabled || streaming) && styles.mediaButtonDisabled]}
+            onPress={onTakePhoto}
+            disabled={disabled || streaming}
+          >
+            <Text style={styles.mediaButtonLabel}>Camera</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <TextInput
         style={styles.input}
         value={value}
@@ -58,6 +84,25 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#e5e5e5',
     backgroundColor: '#fff',
+  },
+  mediaActions: {
+    gap: 6,
+  },
+  mediaButton: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    backgroundColor: '#fafafa',
+  },
+  mediaButtonDisabled: {
+    opacity: 0.45,
+  },
+  mediaButtonLabel: {
+    color: '#111',
+    fontSize: 12,
+    fontWeight: '600',
   },
   input: {
     flex: 1,

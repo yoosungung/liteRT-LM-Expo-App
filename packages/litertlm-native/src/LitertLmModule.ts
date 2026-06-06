@@ -32,11 +32,13 @@ export interface LitertLmEngine {
     conversationId: string,
     text: string,
     extraContext?: Record<string, unknown>,
+    imagePath?: string,
   ): AsyncIterable<StreamPart>;
   sendMessageSync(
     conversationId: string,
     text: string,
     extraContext?: Record<string, unknown>,
+    imagePath?: string,
   ): Promise<Message>;
   approveToolCall(conversationId: string, toolCallId: string, approved: boolean): Promise<void>;
   rejectToolCall(conversationId: string, toolCallId: string, reason?: string): Promise<void>;
