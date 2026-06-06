@@ -12,6 +12,7 @@ import { useFocusEffect } from 'expo-router';
 
 import { defaultPreferredBackend, isEmulator } from '../../src/agent/deviceProfile';
 import { useAgentRuntime } from '../../src/context/AgentContext';
+import { getDeviceRamMb, meetsMinRamForModel, ramGateMessage } from '../../src/models/deviceRam';
 import { MODEL_MANIFEST, type ModelInstallState } from '../../src/models/manifest';
 
 function formatBytes(bytes: number): string {
@@ -27,6 +28,7 @@ export default function ModelsScreen() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const engineMode = useMemo(() => runtime.getEngineMode(), [runtime]);
+  const deviceRamMb = useMemo(() => getDeviceRamMb(), []);
 
   const loadStates = useCallback(async () => {
     setStates(await runtime.modelManager.listStates());
@@ -51,6 +53,10 @@ export default function ModelsScreen() {
   }, []);
 
   const download = async (id: ModelInstallState['id']) => {
+    if (!meetsMinRamForModel(id)) {
+      Alert.alert('Insufficient RAM', ramGateMessage(id) ?? 'This model requires more device RAM.');
+      return;
+    }
     setBusyId(id);
     patchState(id, {
       status: 'downloading',
@@ -76,6 +82,10 @@ export default function ModelsScreen() {
   };
 
   const useModel = async (id: ModelInstallState['id']) => {
+    if (!meetsMinRamForModel(id)) {
+      Alert.alert('Insufficient RAM', ramGateMessage(id) ?? 'This model requires more device RAM.');
+      return;
+    }
     setBusyId(id);
     try {
       const { backend } = await runtime.loadModel(id, defaultPreferredBackend());
@@ -119,6 +129,7 @@ export default function ModelsScreen() {
       <Text style={styles.lead}>
         Engine mode: {engineMode}. Download E2B and verify SHA-256 — Chats will auto-load the last
         model used. Use for chat pre-warms without opening a conversation.
+        {deviceRamMb != null ? `\nDevice RAM: ~${deviceRamMb} MB.` : ''}
       </Text>
 
       {MODEL_MANIFEST.map((entry) => {
@@ -127,6 +138,8 @@ export default function ModelsScreen() {
           status: 'not_downloaded' as const,
         };
         const isBusy = busyId === entry.id;
+        const ramBlocked = !meetsMinRamForModel(entry.id);
+        const ramMessage = ramGateMessage(entry.id);
 
         return (
           <View key={entry.id} style={styles.card}>
@@ -135,6 +148,7 @@ export default function ModelsScreen() {
             <Text style={styles.meta}>
               {formatBytes(entry.sizeBytes)} · min RAM {entry.minRamMb} MB
             </Text>
+            {ramMessage ? <Text style={styles.warning}>{ramMessage}</Text> : null}
             <Text style={styles.status}>Status: {state.status}</Text>
             {state.verifyError ? (
               <Text style={styles.error}>{state.verifyError}</Text>
@@ -179,9 +193,9 @@ export default function ModelsScreen() {
               {state.status === 'verified' ? (
                 <>
                   <Pressable
-                    style={styles.primaryButton}
+                    style={[styles.primaryButton, ramBlocked && styles.buttonDisabled]}
                     onPress={() => useModel(entry.id)}
-                    disabled={isBusy}
+                    disabled={isBusy || ramBlocked}
                   >
                     {isBusy ? (
                       <ActivityIndicator color="#fff" />
@@ -199,9 +213,9 @@ export default function ModelsScreen() {
                 </>
               ) : (
                 <Pressable
-                  style={styles.primaryButton}
+                  style={[styles.primaryButton, ramBlocked && styles.buttonDisabled]}
                   onPress={() => download(entry.id)}
-                  disabled={isBusy || state.status === 'downloading'}
+                  disabled={isBusy || state.status === 'downloading' || ramBlocked}
                 >
                   {isBusy ? (
                     <ActivityIndicator color="#fff" />
@@ -256,6 +270,14 @@ const styles = StyleSheet.create({
   error: {
     color: '#b91c1c',
     fontSize: 13,
+  },
+  warning: {
+    color: '#b45309',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
   },
   progressBlock: {
     gap: 6,

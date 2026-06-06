@@ -4,7 +4,9 @@ interface ChatInputProps {
   value: string;
   onChangeText: (text: string) => void;
   onSend: () => void;
+  onStop?: () => void;
   disabled?: boolean;
+  streaming?: boolean;
   placeholder?: string;
 }
 
@@ -12,10 +14,13 @@ export function ChatInput({
   value,
   onChangeText,
   onSend,
+  onStop,
   disabled,
+  streaming,
   placeholder = 'Message…',
 }: ChatInputProps) {
-  const canSend = !disabled && value.trim().length > 0;
+  const canSend = !disabled && !streaming && value.trim().length > 0;
+  const canStop = streaming && !disabled && onStop;
 
   return (
     <View style={styles.row}>
@@ -24,16 +29,22 @@ export function ChatInput({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        editable={!disabled}
+        editable={!disabled && !streaming}
         multiline
       />
-      <Pressable
-        style={[styles.send, !canSend && styles.sendDisabled]}
-        onPress={onSend}
-        disabled={!canSend}
-      >
-        <Text style={styles.sendLabel}>Send</Text>
-      </Pressable>
+      {canStop ? (
+        <Pressable style={styles.stop} onPress={onStop}>
+          <Text style={styles.stopLabel}>Stop</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          style={[styles.send, !canSend && styles.sendDisabled]}
+          onPress={onSend}
+          disabled={!canSend}
+        >
+          <Text style={styles.sendLabel}>Send</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -69,6 +80,16 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   sendLabel: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  stop: {
+    backgroundColor: '#b91c1c',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  stopLabel: {
     color: '#fff',
     fontWeight: '600',
   },

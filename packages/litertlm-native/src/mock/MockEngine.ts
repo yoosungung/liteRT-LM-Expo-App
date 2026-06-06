@@ -49,6 +49,7 @@ export class MockEngine implements LitertLmEngine {
   };
   private responseIndex = 0;
   private pendingTools = new Map<string, PendingToolFlow>();
+  private abortedGenerations = new Set<string>();
 
   async initialize(config: EngineConfig): Promise<void> {
     await this.transition('loading');
@@ -134,10 +135,11 @@ export class MockEngine implements LitertLmEngine {
     extraContext?: Record<string, unknown>,
   ): AsyncIterable<StreamPart> {
     this.ensureActive();
-    const conversation = this.conversations.get(conversationId);
-    if (!conversation) {
-      throw new Error(`Conversation not found: ${conversationId}`);
-    }
+    try {
+      const conversation = this.conversations.get(conversationId);
+      if (!conversation) {
+        throw new Error(`Conversation not found: ${conversationId}`);
+      }
 
     const mock = this.config?.mock ?? {};
     const batchConfig = this.config?.streamBatch ?? {};
@@ -154,7 +156,11 @@ export class MockEngine implements LitertLmEngine {
         batchConfig,
         tokensPerSecond,
         'thinking',
+        conversationId,
       )) {
+        if (this.isGenerationAborted(conversationId)) {
+          return;
+        }
         yield { kind: 'thinking', delta: chunk };
       }
     }
@@ -205,7 +211,10 @@ export class MockEngine implements LitertLmEngine {
         : this.pickResponse(text, mock);
 
     let full = '';
-    for await (const chunk of this.streamWithBatcher(response, batchConfig, tokensPerSecond, 'token')) {
+    for await (const chunk of this.streamWithBatcher(response, batchConfig, tokensPerSecond, 'token', conversationId)) {
+      if (this.isGenerationAborted(conversationId)) {
+        return;
+      }
       full += chunk;
       yield { kind: 'token', delta: chunk };
     }
@@ -218,6 +227,9 @@ export class MockEngine implements LitertLmEngine {
       timestamp: Date.now(),
     };
     this.emit('onMessageComplete', { conversationId, message });
+    } finally {
+      this.clearGenerationAbort(conversationId);
+    }
   }
 
   async sendMessageSync(
@@ -277,6 +289,10 @@ export class MockEngine implements LitertLmEngine {
     this.pendingTools.delete(toolCallId);
   }
 
+  async abortGeneration(conversationId: string): Promise<void> {
+    this.abortedGenerations.add(conversationId);
+  }
+
   addListener<T extends LitertLmEventName>(
     eventName: T,
     listener: LitertLmEventListener<T>,
@@ -296,6 +312,7 @@ export class MockEngine implements LitertLmEngine {
     batchConfig: { flushIntervalMs?: number; maxTokensPerBatch?: number },
     tokensPerSecond: number,
     kind: StreamDeltaKind,
+    conversationId: string,
   ): AsyncGenerator<string> {
     const pending: string[] = [];
     const batcher = new TokenBatcher({
@@ -311,6 +328,9 @@ export class MockEngine implements LitertLmEngine {
     const delayMs = Math.max(1, Math.floor(1000 / Math.max(tokensPerSecond, 1)));
 
     for (const word of words) {
+      if (this.isGenerationAborted(conversationId)) {
+        return;
+      }
       batcher.append(word, kind);
       await sleep(delayMs);
       while (pending.length > 0) {
@@ -375,6 +395,14 @@ export class MockEngine implements LitertLmEngine {
     const template = canned[this.responseIndex % canned.length]!;
     this.responseIndex += 1;
     return `${template}\n\n(You said: "${text.trim()}")`;
+  }
+
+  private isGenerationAborted(conversationId: string): boolean {
+    return this.abortedGenerations.has(conversationId);
+  }
+
+  private clearGenerationAbort(conversationId: string): void {
+    this.abortedGenerations.delete(conversationId);
   }
 
   private ensureActive(): void {

@@ -154,7 +154,9 @@ export default function ChatScreen() {
         } else if (chunk.type === 'tool_approval_required') {
           await waitForApprovalUi(chunk.toolCall, chunk.riskLevel);
         } else if (chunk.type === 'error') {
-          setError(chunk.message);
+          if (chunk.message !== 'Generation aborted') {
+            setError(chunk.message);
+          }
         } else if (chunk.type === 'done') {
           setStreamingText('');
           setStreamingThinking('');
@@ -222,7 +224,9 @@ export default function ChatScreen() {
           value={input}
           onChangeText={setInput}
           onSend={send}
-          disabled={busy || preparing || pendingApproval !== null}
+          onStop={() => runtime.abortGeneration(id!)}
+          streaming={busy}
+          disabled={preparing || pendingApproval !== null}
         />
       </KeyboardAvoidingView>
       )}

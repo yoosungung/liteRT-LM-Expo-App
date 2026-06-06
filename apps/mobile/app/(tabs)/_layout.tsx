@@ -23,6 +23,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="benchmark"
+        options={{
+          title: 'Benchmark',
+          tabBarLabel: 'Benchmark',
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',

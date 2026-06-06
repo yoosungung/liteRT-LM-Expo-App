@@ -56,5 +56,8 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 2 S2 | **완료** — Native `@Tool` (Kotlin/Swift), Thinking UI, Sampler settings |
 | Phase 2.1 live tool E2E | **완료** — LLM → `getCurrentTime` tool 호출 확인 (manual) |
 | Phase 2.4 Thinking UI | **완료** — `ThinkingBlock` 스트리밍·저장 표시 확인 (manual) |
+| Phase 2 S3 | **완료** — E4B RAM gate, generation abort (native+Stop), Benchmark 탭 |
+| Phase 2 S3 iOS live E2E | **완료** — iPhone **16e** Simulator: E2B, tools, `openUrl` approval, Stop, Benchmark (manual 2026-06-06) |
+| Phase 2 S3 Android live E2E | **완료** — `liteRTLM_E2B` AVD (8GB): E2B, tools, `openUrl` approval, Stop, Benchmark (manual 2026-06-06) |
 
-다음: **S3** — E4B RAM gate, generation abort, Benchmark · `openUrl` approval live E2E.
+다음: **S4** — KV persist/hibernate · Snapshot UI · Smart Eviction.

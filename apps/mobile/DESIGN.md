@@ -209,7 +209,8 @@ pnpm install
 pnpm mobile start
 
 # Android dev client (requires Android SDK / emulator, **JDK 17 or 21** — JDK 24+ breaks native prefab/CMake)
-pnpm mobile android
+# First time: bash ../../scripts/setup-android-emulator.sh  → liteRTLM_E2B (8 GB RAM, E2B용)
+pnpm mobile android   # default AVD: liteRTLM_E2B (not Pixel_9 2GB)
 
 # iOS simulator dev client (requires Xcode)
 pnpm mobile ios

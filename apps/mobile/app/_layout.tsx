@@ -18,7 +18,7 @@ export default function RootLayout() {
     }
 
     const sub = AppState.addEventListener('change', (next) => {
-      void runtime.coordinator.onAppStateChange(mapAppState(next));
+      void runtime.onAppStateChange(mapAppState(next));
     });
 
     return () => sub.remove();

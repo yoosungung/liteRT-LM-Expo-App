@@ -50,6 +50,7 @@ declare class ExpoLitertLmModule extends NativeModule<NativeLitertLmEvents> {
     text: string,
     extraContextJson?: string | null,
   ): Promise<void>;
+  abortGeneration(conversationId: string): Promise<void>;
   enterIdle(): Promise<void>;
   hibernate(): Promise<void>;
   persistSession(conversationId: string): Promise<PersistResult>;
@@ -217,6 +218,11 @@ export class NativeEngine implements LitertLmEngine {
     );
 
     const errorSub = this.native.addListener('onError', (event: LitertLmError) => {
+      if (event.code === 'GENERATION_ABORTED') {
+        done = true;
+        notify();
+        return;
+      }
       streamError = new Error(`${event.code}: ${event.message}`);
       done = true;
       notify();
@@ -289,6 +295,10 @@ export class NativeEngine implements LitertLmEngine {
     void toolCallId;
     void resultJson;
     throw new Error('NOT_IMPLEMENTED: submitToolResult (live manual mode — Phase 2.2)');
+  }
+
+  async abortGeneration(conversationId: string): Promise<void> {
+    await this.native.abortGeneration(conversationId);
   }
 
   addListener<T extends LitertLmEventName>(

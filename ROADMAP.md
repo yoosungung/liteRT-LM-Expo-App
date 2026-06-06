@@ -81,7 +81,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 - [x] S2 Native `@Tool` + Thinking UI + Sampler settings
 - [x] 2.1 live E2E — LLM → time tool (`getCurrentTime`) ✅ (manual)
 - [x] 2.4 Thinking UI — `ThinkingBlock` 표시 ✅ (manual)
-- [ ] 2.3 live — `openUrl` approval E2E
+- [x] 2.3 live — `openUrl` approval E2E ✅ iOS iPhone 16e · Android `liteRTLM_E2B` (manual 2026-06-06)
 
 ### 작업표
 
@@ -91,10 +91,10 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 | 2.2 | `automaticToolCalling` + JS manual mode 토글 | bridge + Settings | 1 |
 | 2.3 | **Tool approval UI** + `onToolApprovalRequired` / `approveToolCall` | `apps/mobile` | 2 |
 | 2.4 | Thinking Mode UI (`enable_thinking`) | `apps/mobile` | 2 |
-| 2.5 | E4B manifest + **기기 RAM gate** (`deviceRam.ts`) | `apps/mobile` | 2 |
+| 2.5 | E4B manifest + **기기 RAM gate** (`deviceRam.ts`) | `apps/mobile` | 2 ✅ |
 | 2.6 | Sampler settings (temperature, top-k) — Prompt Lab lite | Settings | 1 |
-| 2.7 | Generation abort, 백그라운드 처리 | Coordinator + native | 1 |
-| 2.8 | Benchmark 화면 (prefill/decode rough metrics) | `apps/mobile` | 2 |
+| 2.7 | Generation abort, 백그라운드 처리 | Coordinator + native | 1 ✅ |
+| 2.8 | Benchmark 화면 (prefill/decode rough metrics) | `apps/mobile` | 2 ✅ |
 | 2.9 | **`persistSession` / `restoreSession`** + `.kvsnapshot` | `litertlm-native` | 3 |
 | 2.10 | **Smart Eviction** — `onTrimMemory`, memory warning | `litertlm-native` | 3 |
 | 2.11 | **Snapshot UI** + loading skeleton (`restoring`) | `apps/mobile` | 3 |
@@ -187,5 +187,8 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 2. ~~Phase 2 kickoff — 계약·스켈레톤·`phase2-plan.md`~~ ✅ (2026-06-06)
 3. ~~Phase 2 S1~~ ✅ · ~~Phase 2 S2 (native tools + thinking + sampler)~~ ✅
 4. ~~Phase 2 live E2E — time tool + Thinking UI~~ ✅ (manual)
-5. **Phase 2 S3:** E4B RAM gate + abort + Benchmark · `openUrl` approval live
-6. Mock regression: `pnpm litertlm-native mock-tool-smoke` · Thinking ON in Settings
+5. ~~Phase 2 S3~~ ✅ — E4B RAM gate + abort + Benchmark (2026-06-06)
+6. ~~Phase 2 S3 iOS live E2E~~ ✅ — iPhone 16e (2026-06-06)
+7. ~~Phase 2 S3 Android live E2E~~ ✅ — `liteRTLM_E2B` AVD (2026-06-06)
+8. **Phase 2 S4:** KV persist/hibernate stack + Snapshot UI + Smart Eviction
+9. Mock regression: `pnpm litertlm-native mock-tool-smoke` · Thinking ON in Settings

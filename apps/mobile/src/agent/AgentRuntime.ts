@@ -16,6 +16,7 @@ import {
 } from 'litertlm-native';
 
 import type { ModelId } from '../models/manifest';
+import { meetsMinRamForModel, ramGateMessage } from '../models/deviceRam';
 import { ModelManager } from '../models/ModelManager';
 import { ModelPreferences } from '../models/ModelPreferences';
 import { inferenceCachePath } from '../models/verifyModel';
@@ -26,6 +27,7 @@ import {
 import { createSessionId, SessionStore, type StoredSession } from '../storage/SessionStore';
 import { AgentPreferences } from './AgentPreferences';
 import { InferenceCoordinator } from './InferenceCoordinator';
+import type { AppLifecycleState } from './InferenceCoordinator';
 import { createPromptTemplateEngine } from './PromptTemplateEngine';
 import type { StreamChunk } from './StreamChunk';
 import { ToolRegistry } from './tools/registry';
@@ -67,6 +69,7 @@ export class AgentRuntime {
   private loadedBackend: Backend | null = null;
   private activeModelId: ModelId = 'gemma-4-e2b';
   private abortControllers = new Map<string, AbortController>();
+  private generatingSessions = new Set<string>();
   private loadModelPromise: Promise<{ backend: Backend }> | null = null;
   private loadingModelId: ModelId | null = null;
   private ensureConversationInflight = new Map<string, Promise<void>>();
@@ -95,6 +98,13 @@ export class AgentRuntime {
 
   isModelLoaded(): boolean {
     return this.modelLoaded;
+  }
+
+  isGenerating(sessionId?: string): boolean {
+    if (sessionId) {
+      return this.generatingSessions.has(sessionId);
+    }
+    return this.generatingSessions.size > 0;
   }
 
   getEngine(): LitertLmEngine {
@@ -141,6 +151,15 @@ export class AgentRuntime {
     this.approvalGates.delete(toolCallId);
   }
 
+  async onAppStateChange(state: AppLifecycleState): Promise<void> {
+    if (state === 'background') {
+      for (const sessionId of this.generatingSessions) {
+        this.abortGeneration(sessionId);
+      }
+    }
+    await this.coordinator.onAppStateChange(state);
+  }
+
   async initialize(): Promise<void> {
     if (this.initialized) {
       return;
@@ -159,6 +178,10 @@ export class AgentRuntime {
 
     if (mode === 'live' && !verifiedPath) {
       throw new Error('Model is not verified. Download and verify before live mode.');
+    }
+
+    if (mode === 'live' && !meetsMinRamForModel(modelId)) {
+      throw new Error(ramGateMessage(modelId) ?? `Insufficient RAM for ${modelId}`);
     }
 
     const resolvedPreferred = resolvePreferredBackend(preferredBackend);
@@ -373,6 +396,7 @@ export class AgentRuntime {
 
     const abort = new AbortController();
     this.abortControllers.set(sessionId, abort);
+    this.generatingSessions.add(sessionId);
 
     let assistantText = '';
     let assistantThinking = '';
@@ -488,6 +512,7 @@ export class AgentRuntime {
       this.streamChunkQueue = [];
       this.wakeStream = null;
       this.abortControllers.delete(sessionId);
+      this.generatingSessions.delete(sessionId);
     }
   }
 
@@ -565,6 +590,7 @@ export class AgentRuntime {
 
   abortGeneration(sessionId: string): void {
     this.abortControllers.get(sessionId)?.abort();
+    void this.engine.abortGeneration(sessionId);
   }
 }
 
