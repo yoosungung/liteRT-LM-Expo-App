@@ -44,7 +44,10 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 0.2 CLI 스모크 | **완료** — E2B 1-turn (`Hello!`), `.references/phase0-cli-smoke.md` |
 | Phase 0.5 / 0.7 | Gallery·KV persist spike 노트 |
 | Phase 1.3 Chat UI | Expo Router, mock mode default |
-| Phase 1.1 Android bridge | LiteRT-LM Gradle + Engine bridge 골격 |
-| Phase 1.4–1.6 | ModelManager, SessionStore, PromptTemplateEngine |
+| Phase 1.1 Android bridge | LiteRT-LM **0.13.0** Gradle + `Engine.sendMessageAsync` live wiring |
+| Phase 1.2 NativeEngine | JS `NativeEngine` + `createEngine('live')` |
+| Phase 1.4–1.6 | ModelManager (SHA-256 pin+verify), SessionStore, PromptTemplateEngine |
+| Phase 1.10–1.11 | InferenceCoordinator + `warmUp`/`persistSession` skeleton |
+| Phase 1.12 | Native SHA-256 verify — **Android** `MessageDigest` (iOS CryptoKit pending) |
 
-다음: Android live Engine wiring, E2B download E2E, iOS bridge (1.8).
+다음: Android dev rebuild E2E (download→GPU chat), iOS bridge (1.8), native SHA-256 (1.12).

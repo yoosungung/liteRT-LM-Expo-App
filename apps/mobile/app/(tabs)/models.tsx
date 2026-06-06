@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,12 +25,17 @@ export default function ModelsScreen() {
   const [states, setStates] = useState<ModelInstallState[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const engineMode = useMemo(() => runtime.getEngineMode(), [runtime]);
+
+  const loadStates = useCallback(async () => {
+    setStates(await runtime.modelManager.listStates());
+  }, [runtime]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    setStates(await runtime.modelManager.listStates());
+    await loadStates();
     setLoading(false);
-  }, [runtime]);
+  }, [loadStates]);
 
   useFocusEffect(
     useCallback(() => {
@@ -38,16 +43,51 @@ export default function ModelsScreen() {
     }, [refresh]),
   );
 
+  const patchState = useCallback((id: ModelInstallState['id'], patch: Partial<ModelInstallState>) => {
+    setStates((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...patch, id } : s)),
+    );
+  }, []);
+
   const download = async (id: ModelInstallState['id']) => {
     setBusyId(id);
+    patchState(id, {
+      status: 'downloading',
+      progress: 0,
+      bytesDownloaded: 0,
+      verifyError: undefined,
+    });
     try {
-      const result = await runtime.modelManager.downloadModel(id, () => {
-        void refresh();
+      const result = await runtime.modelManager.downloadModel(id, (update) => {
+        patchState(id, {
+          status: update.status ?? 'downloading',
+          progress: update.progress,
+          bytesDownloaded: update.bytesDownloaded,
+        });
       });
       if (result.status === 'failed') {
         Alert.alert('Download failed', result.verifyError ?? 'Unknown error');
       }
-      await refresh();
+      await loadStates();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const useModel = async (id: ModelInstallState['id']) => {
+    setBusyId(id);
+    try {
+      const { backend } = await runtime.loadModel(id, 'gpu');
+      Alert.alert(
+        'Model loaded',
+        `Gemma 4 ${id} is ready (${engineMode} mode, ${backend} backend). Open Chats to start inference.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Load failed';
+      Alert.alert(
+        'Load failed',
+        `${message}\n\nTip: Android emulator often needs CPU backend (auto-fallback after GPU).`,
+      );
     } finally {
       setBusyId(null);
     }
@@ -74,8 +114,8 @@ export default function ModelsScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.lead}>
-        Phase 1: E2B/E4B manifest + HF download. Live inference requires verified model +
-        Android Engine bridge.
+        Engine mode: {engineMode}. Download E2B, verify SHA-256, then tap Use for chat. Live mode
+        needs Android dev build + EXPO_PUBLIC_LITERTLM_MODE=live.
       </Text>
 
       {MODEL_MANIFEST.map((entry) => {
@@ -96,21 +136,64 @@ export default function ModelsScreen() {
             {state.verifyError ? (
               <Text style={styles.error}>{state.verifyError}</Text>
             ) : null}
-            {state.status === 'downloading' && state.progress != null ? (
-              <Text style={styles.meta}>
-                Progress: {Math.round(state.progress * 100)}%
-              </Text>
+            {state.status === 'downloading' ? (
+              <View style={styles.progressBlock}>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${Math.max((state.progress ?? 0) * 100, state.bytesDownloaded ? 0.5 : 0)}%`,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.meta}>
+                  Downloading… {formatBytes(state.bytesDownloaded ?? 0)} /{' '}
+                  {formatBytes(entry.sizeBytes)} ({((state.progress ?? 0) * 100).toFixed(1)}%)
+                </Text>
+              </View>
+            ) : null}
+            {state.status === 'verifying' ? (
+              <View style={styles.progressBlock}>
+                <ActivityIndicator size="small" />
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.round((state.progress ?? 0) * 100)}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.meta}>
+                  Verifying SHA-256… {formatBytes(state.bytesDownloaded ?? 0)} /{' '}
+                  {formatBytes(entry.sizeBytes)} ({((state.progress ?? 0) * 100).toFixed(0)}%)
+                </Text>
+              </View>
             ) : null}
 
             <View style={styles.actions}>
               {state.status === 'verified' ? (
-                <Pressable
-                  style={styles.secondaryButton}
-                  onPress={() => remove(entry.id)}
-                  disabled={isBusy}
-                >
-                  <Text style={styles.secondaryLabel}>Delete</Text>
-                </Pressable>
+                <>
+                  <Pressable
+                    style={styles.primaryButton}
+                    onPress={() => useModel(entry.id)}
+                    disabled={isBusy}
+                  >
+                    {isBusy ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.primaryLabel}>Use for chat</Text>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    style={styles.secondaryButton}
+                    onPress={() => remove(entry.id)}
+                    disabled={isBusy}
+                  >
+                    <Text style={styles.secondaryLabel}>Delete</Text>
+                  </Pressable>
+                </>
               ) : (
                 <Pressable
                   style={styles.primaryButton}
@@ -170,6 +253,21 @@ const styles = StyleSheet.create({
   error: {
     color: '#b91c1c',
     fontSize: 13,
+  },
+  progressBlock: {
+    gap: 6,
+    marginTop: 4,
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: '#e5e5e5',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#111',
+    borderRadius: 3,
   },
   actions: {
     flexDirection: 'row',

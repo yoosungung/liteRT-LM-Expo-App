@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { DownloadTask, File } from 'expo-file-system';
+import { File } from 'expo-file-system';
 import type { Backend } from 'litertlm-native';
 
 import {
   getManifestEntry,
+  type ModelDownloadProgress,
   type ModelId,
   type ModelInstallState,
   type ModelManifestEntry,
@@ -16,14 +17,51 @@ import {
 } from './verifyModel';
 
 const STATE_KEY = '@litertlm/model-install-states';
+const PROGRESS_POLL_MS = 500;
+const PERSIST_PROGRESS_STEP = 0.02;
 
 function hubUrl(entry: ModelManifestEntry): string {
   return `https://huggingface.co/${entry.hfRepo}/resolve/main/${entry.fileName}`;
 }
 
 function readHfToken(): string | undefined {
-  return (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
-    ?.HF_TOKEN;
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
+    ?.env;
+  // Expo inlines only EXPO_PUBLIC_* into the JS bundle (babel-preset-expo).
+  return env?.EXPO_PUBLIC_HF_TOKEN ?? env?.HF_TOKEN;
+}
+
+function computeProgress(bytesWritten: number, totalBytes: number, manifestSize: number): number {
+  const total = totalBytes > 0 ? totalBytes : manifestSize;
+  if (total <= 0 || bytesWritten <= 0) {
+    return 0;
+  }
+  return Math.min(bytesWritten / total, 1);
+}
+
+function isCompleteDownloadSize(actualBytes: number, expectedBytes: number): boolean {
+  if (actualBytes <= 0) {
+    return false;
+  }
+  return Math.abs(actualBytes - expectedBytes) <= expectedBytes * 0.02;
+}
+
+function pollDownloadedBytes(
+  dest: File,
+  onBytes: (bytesWritten: number) => void,
+): () => void {
+  let lastBytes = 0;
+  const timer = setInterval(() => {
+    if (!dest.exists) {
+      return;
+    }
+    const size = dest.size ?? 0;
+    if (size > lastBytes) {
+      lastBytes = size;
+      onBytes(size);
+    }
+  }, PROGRESS_POLL_MS);
+  return () => clearInterval(timer);
 }
 
 export class ModelManager {
@@ -51,7 +89,7 @@ export class ModelManager {
 
   async downloadModel(
     id: ModelId,
-    onProgress?: (progress: number) => void,
+    onProgress?: (update: ModelDownloadProgress) => void,
   ): Promise<ModelInstallState> {
     const entry = getManifestEntry(id);
     const token = readHfToken();
@@ -65,24 +103,54 @@ export class ModelManager {
 
     ensureModelsDirectory();
     const dest = modelFile(id);
+    const existingSize = dest.exists ? (dest.size ?? 0) : 0;
+    if (isCompleteDownloadSize(existingSize, entry.sizeBytes)) {
+      return this.verifyDownloadedModel(id, dest, onProgress);
+    }
+
     if (dest.exists) {
       dest.delete();
     }
-    await this.saveState({ id, status: 'downloading', progress: 0, localPath: dest.uri });
-
-    const task = new DownloadTask(hubUrl(entry), dest, {
-      headers: { Authorization: `Bearer ${token}` },
-      onProgress: ({ bytesWritten, totalBytes }) => {
-        if (totalBytes > 0) {
-          onProgress?.(bytesWritten / totalBytes);
-        } else if (entry.sizeBytes > 0) {
-          onProgress?.(bytesWritten / entry.sizeBytes);
-        }
-      },
+    await this.saveState({
+      id,
+      status: 'downloading',
+      progress: 0,
+      bytesDownloaded: 0,
+      localPath: dest.uri,
     });
 
+    let lastBytes = 0;
+    let lastPersistedProgress = 0;
+
+    const report = (bytesWritten: number, totalBytes = -1) => {
+      lastBytes = Math.max(lastBytes, bytesWritten);
+      const progress = computeProgress(lastBytes, totalBytes, entry.sizeBytes);
+      onProgress?.({ progress, bytesDownloaded: lastBytes });
+
+      if (progress - lastPersistedProgress >= PERSIST_PROGRESS_STEP || progress >= 0.99) {
+        lastPersistedProgress = progress;
+        void this.saveState({
+          id,
+          status: 'downloading',
+          progress,
+          bytesDownloaded: lastBytes,
+          localPath: dest.uri,
+        });
+      }
+    };
+
+    const stopPolling = pollDownloadedBytes(dest, (bytes) => report(bytes));
+
     try {
-      await task.downloadAsync();
+      // File.downloadFileAsync emits downloadProgress events; DownloadTask progress
+      // can be unreliable on Android for large redirected HF downloads.
+      await File.downloadFileAsync(hubUrl(entry), dest, {
+        headers: { Authorization: `Bearer ${token}` },
+        idempotent: true,
+        onProgress: ({ bytesWritten, totalBytes }) => {
+          report(bytesWritten, totalBytes);
+        },
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Download failed';
       return this.saveState({
@@ -91,15 +159,30 @@ export class ModelManager {
         verifyError: message,
         localPath: dest.uri,
       });
+    } finally {
+      stopPolling();
     }
 
-    return this.verifyDownloadedModel(id, dest);
+    const finalSize = dest.size ?? entry.sizeBytes;
+    report(finalSize, entry.sizeBytes);
+    return this.verifyDownloadedModel(id, dest, onProgress);
   }
 
-  async verifyDownloadedModel(id: ModelId, localFile?: File): Promise<ModelInstallState> {
+  async verifyDownloadedModel(
+    id: ModelId,
+    localFile?: File,
+    onProgress?: (update: ModelDownloadProgress) => void,
+  ): Promise<ModelInstallState> {
     const entry = getManifestEntry(id);
     const file = localFile ?? modelFile(id);
-    await this.saveState({ id, status: 'verifying', localPath: file.uri });
+    await this.saveState({
+      id,
+      status: 'verifying',
+      localPath: file.uri,
+      progress: 0,
+      bytesDownloaded: 0,
+    });
+    onProgress?.({ progress: 0, bytesDownloaded: 0, status: 'verifying' });
 
     if (!file.exists) {
       return this.saveState({
@@ -111,7 +194,7 @@ export class ModelManager {
     }
 
     const size = file.size ?? 0;
-    if (size > 0 && Math.abs(size - entry.sizeBytes) > entry.sizeBytes * 0.02) {
+    if (size > 0 && !isCompleteDownloadSize(size, entry.sizeBytes)) {
       file.delete();
       return this.saveState({
         id,
@@ -120,12 +203,14 @@ export class ModelManager {
       });
     }
 
-    const verify = await verifyModelSha256(file, entry.sha256);
+    const verify = await verifyModelSha256(file, entry.sha256, (hashed, total) => {
+      onProgress?.({
+        progress: total > 0 ? hashed / total : 0,
+        bytesDownloaded: hashed,
+        status: 'verifying',
+      });
+    });
     if (!verify.ok) {
-      if (verify.error.includes('not pinned')) {
-        // Phase 1 interim: allow size-verified install until sha256 is pinned.
-        return this.saveState({ id, status: 'verified', localPath: file.uri, progress: 1 });
-      }
       file.delete();
       return this.saveState({
         id,
@@ -134,7 +219,13 @@ export class ModelManager {
       });
     }
 
-    return this.saveState({ id, status: 'verified', localPath: file.uri, progress: 1 });
+    return this.saveState({
+      id,
+      status: 'verified',
+      localPath: file.uri,
+      progress: 1,
+      bytesDownloaded: size,
+    });
   }
 
   async deleteModel(id: ModelId): Promise<void> {

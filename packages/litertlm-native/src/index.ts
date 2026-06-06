@@ -1,5 +1,6 @@
 import type { EngineConfig, EngineMode } from './LitertLm.types';
 import { MockEngine } from './mock/MockEngine';
+import { NativeEngine } from './NativeEngine';
 import type { LitertLmEngine } from './LitertLmModule';
 
 declare const __DEV__: boolean | undefined;
@@ -29,9 +30,7 @@ export function createEngine(config?: Partial<EngineConfig>): LitertLmEngine {
   if (mode === 'mock') {
     return new MockEngine();
   }
-  throw new Error(
-    'Live LiteRT-LM engine is not wired yet (Phase 1). Set EXPO_PUBLIC_LITERTLM_MODE=mock.',
-  );
+  return new NativeEngine();
 }
 
 export function defaultMockConfig(): EngineConfig {
@@ -52,4 +51,10 @@ export function defaultMockConfig(): EngineConfig {
 export * from './LitertLm.types';
 export type { LitertLmEngine } from './LitertLmModule';
 export { MockEngine } from './mock/MockEngine';
+export { NativeEngine } from './NativeEngine';
 export { TokenBatcher } from './mock/TokenBatcher';
+export {
+  isNativeSha256VerifyAvailable,
+  verifyFileSha256Native,
+  type Sha256VerifyResult,
+} from './verifySha256';

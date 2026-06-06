@@ -29,8 +29,14 @@ export default function ChatScreen() {
     }
     const loaded = await runtime.sessionStore.getSession(id);
     setSession(loaded);
+    setError(null);
     if (loaded) {
-      await runtime.ensureConversation(loaded);
+      try {
+        await runtime.ensureConversation(loaded);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Engine not ready';
+        setError(message);
+      }
     }
   }, [id, runtime]);
 

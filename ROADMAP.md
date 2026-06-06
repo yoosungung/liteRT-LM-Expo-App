@@ -45,7 +45,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 | 1.1 | LiteRT-LM Android Engine bridge | `litertlm-native` |
 | 1.2 | `initialize` / `sendMessage` stream + **token batching** | bridge API §2.3, §1.7 |
 | 1.3 | Chat UI (FlatList, input, streaming) — **mock mode default in dev** | `apps/mobile` |
-| 1.4 | Model Manager — E2B download + **SHA-256 verify** | `apps/mobile` |
+| 1.4 | Model Manager — E2B download + **SHA-256 verify** (현재 JS `@noble/hashes` interim) | `apps/mobile` |
 | 1.5 | SessionStore — 로컬 대화 저장 | `apps/mobile` |
 | 1.6 | **PromptTemplateEngine** (system instruction, extraContext) | `apps/mobile` |
 | 1.7 | GPU backend + Manifest config plugin | `litertlm-native` plugin |
@@ -53,6 +53,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 | 1.9 | EAS dev build iOS simulator | CI/manual |
 | 1.10 | **InferenceCoordinator** — AppState `warmUp` on active | `apps/mobile` |
 | 1.11 | **InferenceStateBridge** skeleton — `enterIdle`, lifecycle events | `litertlm-native` |
+| 1.12 | **Native SHA-256 verify** — Android `MessageDigest` streaming digest ✅ · iOS CryptoKit · verify progress | `litertlm-native` |
 
 **Phase 1 완료 기준**
 
@@ -140,7 +141,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 | R4 | Model download size (2.5GB+) | UX 이탈 | Wi-Fi only option, resume download |
 | R5 | RN bridge streaming perf | choppy UI | **§1.7 token batching** (50ms / 8 tok) |
 | R6 | HF license / Gemma terms | 배포 제약 | 앱 내 라이선스 표시, accept flow |
-| R7 | Corrupted model download | native crash | **§1.8 SHA-256 verify** before Engine |
+| R7 | Corrupted model download | native crash | **§1.8 SHA-256 verify** before Engine; Phase **1.12** native streaming digest (JS verify는 E2B 2.5GB+ UX 병목) |
 | R8 | Tool misuse (auto exec) | UX/보안 | **§1.10 approval UI** |
 | R9 | Slow UI dev cycle | 생산성 | **§1.11 mock backend** |
 | R10 | Memory pressure (OOM) / OS kill | crash, UX | **§1.12** 3-tier lifecycle, Smart Eviction, KV persist |
@@ -156,6 +157,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 - [ ] Zero network during inference (packet capture spot check)
 - [ ] Mock mode: chat UI full flow without model load
 - [ ] Download corrupt file → verify fails → Engine never called
+- [ ] E2B post-download SHA-256 verify: native path (1.12) — 실기기에서 download 대비 체감 지연 없음 (에뮬레이터 JS interim은 제외)
 - [ ] Stream UI: no jank at 50+ tok/s decode (batched deltas)
 - [ ] Background → Idle; memory warning → Hibernated (no crash)
 - [ ] Restore from KV snapshot: 10-turn session TTFT < restore-from-scratch prefill case
@@ -164,7 +166,8 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 
 ## 다음 액션 (즉시)
 
-1. Phase 1.1: Android `EngineBridge` → LiteRT-LM `Engine.initialize` / `sendMessageAsync` 실연결
-2. Phase 1.4: manifest `sha256` pin + streaming verify (multi-GB)
-3. `pnpm mobile start` → Chats → New chat → mock 스트리밍 확인
-4. Android dev rebuild: `pnpm mobile android` (Kotlin bridge 변경 후)
+1. Android dev rebuild + E2E: `EXPO_PUBLIC_LITERTLM_MODE=live` → Models download E2B → Use for chat → GPU inference
+2. Phase 1.8: iOS Swift Engine bridge (parity)
+3. Phase 1.12: Native SHA-256 verify (E2B 2.5GB+ — JS `@noble/hashes` 병목 제거)
+4. Mock regression: `pnpm mobile start` → Chats → mock 스트리밍
+5. Android dev rebuild: `pnpm mobile android` (Kotlin/Swift bridge 변경 후)

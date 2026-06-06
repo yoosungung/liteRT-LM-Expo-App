@@ -18,7 +18,11 @@ export class InferenceCoordinator {
   private lastEngineConfig: EngineConfig | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly engine: LitertLmEngine) {}
+  constructor(private engine: LitertLmEngine) {}
+
+  setEngine(engine: LitertLmEngine): void {
+    this.engine = engine;
+  }
 
   setLastEngineConfig(config: EngineConfig): void {
     this.lastEngineConfig = config;
@@ -42,9 +46,14 @@ export class InferenceCoordinator {
   async onChatFocus(conversationId: string): Promise<void> {
     this.focusedConversationId = conversationId;
     this.clearIdleTimer();
-    if (this.lastEngineConfig) {
-      await this.engine.warmUp(this.lastEngineConfig);
+    if (!this.lastEngineConfig?.modelPath) {
+      return;
     }
+    const lifecycle = this.engine.getStatus().lifecycle;
+    if (lifecycle !== 'active' && lifecycle !== 'idle') {
+      return;
+    }
+    await this.engine.warmUp(this.lastEngineConfig);
     await this.engine.restoreSession(conversationId);
   }
 

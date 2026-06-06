@@ -4,6 +4,8 @@ import {
   resolveEngineMode,
   type Backend,
   type EngineConfig,
+  type EngineMode,
+  type InferenceLifecycle,
   type LitertLmEngine,
   type Message,
 } from 'litertlm-native';
@@ -21,6 +23,10 @@ export interface SessionOptions {
   title?: string;
 }
 
+function isEngineLifecycleReady(lifecycle: InferenceLifecycle): boolean {
+  return lifecycle === 'active' || lifecycle === 'idle';
+}
+
 export class AgentRuntime {
   readonly sessionStore = new SessionStore();
   readonly modelManager = new ModelManager();
@@ -30,6 +36,8 @@ export class AgentRuntime {
   private promptEngine = createPromptTemplateEngine();
   private engineConfig: EngineConfig;
   private initialized = false;
+  private modelLoaded = false;
+  private loadedBackend: Backend | null = null;
   private activeModelId: ModelId = 'gemma-4-e2b';
   private abortControllers = new Map<string, AbortController>();
 
@@ -40,8 +48,16 @@ export class AgentRuntime {
     this.coordinator.setLastEngineConfig(this.engineConfig);
   }
 
-  getEngineMode(): string {
+  getEngineMode(): EngineMode {
     return resolveEngineMode(this.engineConfig);
+  }
+
+  getLoadedBackend(): Backend | null {
+    return this.loadedBackend;
+  }
+
+  isModelLoaded(): boolean {
+    return this.modelLoaded;
   }
 
   getEngine(): LitertLmEngine {
@@ -56,26 +72,58 @@ export class AgentRuntime {
     this.initialized = true;
   }
 
-  async loadModel(modelId: ModelId, backend: Backend = 'cpu'): Promise<void> {
+  async loadModel(
+    modelId: ModelId,
+    preferredBackend: Backend = 'cpu',
+  ): Promise<{ backend: Backend }> {
     this.activeModelId = modelId;
     const verifiedPath = await this.modelManager.getVerifiedModelPath(modelId);
+    const mode = resolveEngineMode();
 
-    this.engineConfig = {
-      ...defaultMockConfig(),
-      mode: resolveEngineMode(),
-      backend,
-      modelPath: verifiedPath ?? undefined,
-    };
-
-    if (this.engineConfig.mode === 'live' && !verifiedPath) {
+    if (mode === 'live' && !verifiedPath) {
       throw new Error('Model is not verified. Download and verify before live mode.');
     }
 
+    const backends: Backend[] =
+      preferredBackend === 'gpu' ? ['gpu', 'cpu'] : [preferredBackend];
+
+    let lastError: Error | null = null;
+    for (const backend of backends) {
+      try {
+        await this.applyEngineConfig(mode, verifiedPath, backend);
+        this.modelLoaded = true;
+        this.loadedBackend = backend;
+        return { backend };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        this.modelLoaded = false;
+        this.loadedBackend = null;
+        this.initialized = false;
+      }
+    }
+
+    throw lastError ?? new Error('Failed to load model');
+  }
+
+  private async applyEngineConfig(
+    mode: EngineMode,
+    modelPath: string | null,
+    backend: Backend,
+  ): Promise<void> {
+    this.engineConfig = {
+      ...defaultMockConfig(),
+      mode,
+      backend,
+      modelPath: modelPath ?? undefined,
+    };
+
     if (this.initialized) {
       await this.engine.shutdown();
+      this.initialized = false;
     }
 
     this.engine = createEngine(this.engineConfig);
+    this.coordinator.setEngine(this.engine);
     this.coordinator.setLastEngineConfig(this.engineConfig);
     await this.engine.initialize(this.engineConfig);
     this.initialized = true;
@@ -106,7 +154,24 @@ export class AgentRuntime {
   }
 
   async ensureConversation(session: StoredSession): Promise<void> {
+    const mode = resolveEngineMode();
+    if (mode === 'live') {
+      if (!this.modelLoaded || !this.engineConfig.modelPath) {
+        throw new Error(
+          'Models 탭에서 verified 모델을 Use for chat으로 먼저 로드하세요.',
+        );
+      }
+    }
+
     await this.initialize();
+
+    const lifecycle = this.engine.getStatus().lifecycle;
+    if (mode === 'live' && !isEngineLifecycleReady(lifecycle)) {
+      throw new Error(
+        `Engine not ready (lifecycle=${lifecycle}). Models에서 다시 로드하세요. 에뮬레이터는 GPU 대신 CPU로 자동 전환됩니다.`,
+      );
+    }
+
     await this.engine.createConversation({
       conversationId: session.id,
       systemInstruction: this.promptEngine.buildSystemInstruction(session),

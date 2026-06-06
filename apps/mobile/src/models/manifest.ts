@@ -23,7 +23,14 @@ export interface ModelInstallState {
   status: ModelInstallStatus;
   localPath?: string;
   progress?: number;
+  bytesDownloaded?: number;
   verifyError?: string;
+}
+
+export interface ModelDownloadProgress {
+  progress: number;
+  bytesDownloaded: number;
+  status?: ModelInstallStatus;
 }
 
 export const MODEL_MANIFEST: ModelManifestEntry[] = [
@@ -32,9 +39,8 @@ export const MODEL_MANIFEST: ModelManifestEntry[] = [
     displayName: 'Gemma 4 E2B IT',
     hfRepo: 'litert-community/gemma-4-E2B-it-litert-lm',
     fileName: 'gemma-4-E2B-it.litertlm',
-    sizeBytes: 2_770_000_000,
-    // Update when pinning a specific artifact revision.
-    sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+    sizeBytes: 2_588_147_712,
+    sha256: '181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c',
     modalities: ['text', 'image', 'audio'],
     minRamMb: 4096,
   },
@@ -43,8 +49,8 @@ export const MODEL_MANIFEST: ModelManifestEntry[] = [
     displayName: 'Gemma 4 E4B IT',
     hfRepo: 'litert-community/gemma-4-E4B-it-litert-lm',
     fileName: 'gemma-4-E4B-it.litertlm',
-    sizeBytes: 4_500_000_000,
-    sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+    sizeBytes: 3_659_530_240,
+    sha256: '0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0',
     modalities: ['text', 'image', 'audio'],
     minRamMb: 8192,
   },
