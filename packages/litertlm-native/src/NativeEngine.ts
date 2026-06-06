@@ -18,6 +18,7 @@ import type {
   StreamPart,
   ToolApprovalRequiredEvent,
   ToolCallEvent,
+  RunJsRequiredEvent,
 } from './LitertLm.types';
 import { serializeConversationConfig } from './conversationConfigJson';
 import type { LitertLmEngine } from './LitertLmModule';
@@ -29,6 +30,7 @@ type NativeLitertLmEvents = {
   onMessageComplete: (event: { conversationId: string; message: Message }) => void;
   onToolCall: (event: ToolCallEvent) => void;
   onToolApprovalRequired: (event: ToolApprovalRequiredEvent) => void;
+  onRunJsRequired: (event: RunJsRequiredEvent) => void;
   onError: (event: LitertLmError) => void;
 };
 
@@ -44,6 +46,7 @@ declare class ExpoLitertLmModule extends NativeModule<NativeLitertLmEvents> {
   ): Promise<void>;
   approveToolCall(conversationId: string, toolCallId: string, approved: boolean): Promise<void>;
   rejectToolCall(conversationId: string, toolCallId: string, reason?: string | null): Promise<void>;
+  completeRunJs(toolCallId: string, resultJson: string): Promise<void>;
   closeConversation(conversationId: string): Promise<void>;
   sendMessage(
     conversationId: string,
@@ -307,6 +310,10 @@ export class NativeEngine implements LitertLmEngine {
     void toolCallId;
     void resultJson;
     throw new Error('NOT_IMPLEMENTED: submitToolResult (live manual mode — Phase 2.2)');
+  }
+
+  async completeRunJs(toolCallId: string, resultJson: string): Promise<void> {
+    await this.native.completeRunJs(toolCallId, resultJson);
   }
 
   async abortGeneration(conversationId: string): Promise<void> {

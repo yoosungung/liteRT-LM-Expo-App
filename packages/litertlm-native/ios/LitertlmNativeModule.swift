@@ -49,6 +49,16 @@ public class LitertlmNativeModule: Module {
         ]
       )
     }
+    bridge.onRunJsRequired = { [weak self] conversationId, toolCallId, argumentsJson in
+      self?.sendEvent(
+        "onRunJsRequired",
+        [
+          "conversationId": conversationId,
+          "toolCallId": toolCallId,
+          "argumentsJson": argumentsJson,
+        ]
+      )
+    }
     return bridge
   }()
 
@@ -69,6 +79,7 @@ public class LitertlmNativeModule: Module {
       "onStreamDelta",
       "onMessageComplete",
       "onToolApprovalRequired",
+      "onRunJsRequired",
       "onError",
       "onSha256VerifyProgress"
     )
@@ -117,6 +128,10 @@ public class LitertlmNativeModule: Module {
         toolCallId: toolCallId,
         approved: approved
       )
+    }
+
+    AsyncFunction("completeRunJs") { (toolCallId: String, resultJson: String) in
+      self.engineBridge.completeRunJs(toolCallId: toolCallId, resultJson: resultJson)
     }
 
     AsyncFunction("rejectToolCall") { (conversationId: String, toolCallId: String, reason: String?) in
@@ -178,24 +193,28 @@ public class LitertlmNativeModule: Module {
     }
 
     AsyncFunction("verifyFileSha256") { (filePath: String, expectedSha256: String) -> [String: Any?] in
-      try await Task.detached(priority: .utility) { [weak self] in
-        let result = Sha256Verifier.verify(
-          filePath: filePath,
-          expectedSha256: expectedSha256
-        ) { bytesHashed, totalBytes in
-          DispatchQueue.main.async { [weak self] in
-            self?.sendEvent(
-              "onSha256VerifyProgress",
-              ["bytesHashed": bytesHashed, "totalBytes": totalBytes]
-            )
+      await withCheckedContinuation { (continuation: CheckedContinuation<[String: Any?], Never>) in
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+          let result = Sha256Verifier.verify(
+            filePath: filePath,
+            expectedSha256: expectedSha256
+          ) { bytesHashed, totalBytes in
+            DispatchQueue.main.async {
+              self?.sendEvent(
+                "onSha256VerifyProgress",
+                ["bytesHashed": bytesHashed, "totalBytes": totalBytes]
+              )
+            }
           }
+          continuation.resume(
+            returning: [
+              "ok": result.ok,
+              "digest": result.digest,
+              "error": result.error,
+            ] as [String: Any?]
+          )
         }
-        return [
-          "ok": result.ok,
-          "digest": result.digest,
-          "error": result.error,
-        ] as [String: Any?]
-      }.value
+      }
     }
   }
 }

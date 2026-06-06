@@ -39,6 +39,20 @@ export function detectMockTool(text: string): MockToolTrigger | null {
     };
   }
 
+  if (/\/hash-demo\b|reverse text|run_js/.test(lower)) {
+    const textMatch = trimmed.match(/reverse\s+(.+)/i);
+    const text = textMatch?.[1]?.trim() || trimmed.replace(/^\/hash-demo\s*/i, '').trim() || 'hello';
+    return {
+      name: 'run_js',
+      args: {
+        scriptName: 'index.html',
+        data: JSON.stringify({ text }),
+      },
+      riskLevel: 'write',
+      requiresApproval: false,
+    };
+  }
+
   return null;
 }
 

@@ -171,7 +171,7 @@ idle → sending → streaming → (tool_approval_pending) → (tool_executing) 
 
 ---
 
-## 11. Phase 2 (진행 중)
+## 11. Phase 2 (완료)
 
 구현 계획: [.references/phase2-plan.md](../../.references/phase2-plan.md)
 
@@ -181,13 +181,32 @@ idle → sending → streaming → (tool_approval_pending) → (tool_executing) 
 | Agent preferences | `src/agent/AgentPreferences.ts` | ✅ auto-tools toggle (Settings) |
 | Settings | `app/(tabs)/settings.tsx` | ✅ automaticToolCalling |
 | Tool approval | `src/components/ToolApprovalSheet.tsx` | ✅ Chat wiring |
-| RAM gate | `src/models/deviceRam.ts` | E4B `minRamMb` |
-| Thinking UI | `src/components/ThinkingBlock.tsx` | 컴포넌트 |
-| Tool approval | `src/components/ToolApprovalSheet.tsx` | 컴포넌트 |
-| Settings / Benchmark | `app/(tabs)/settings.tsx`, `benchmark.tsx` | Phase 2.6/2.8 |
-| Chat 통합 | `app/(tabs)/chat/[id].tsx` | thinking·approval·abort wiring |
+| RAM gate | `src/models/deviceRam.ts` | ✅ E4B `minRamMb` |
+| Thinking UI | `src/components/ThinkingBlock.tsx` | ✅ |
+| Benchmark | `app/(tabs)/benchmark.tsx` | ✅ |
+| KV persist/hibernate | InferenceCoordinator + native | ✅ S4 |
 
-Mock-first: registry + approval sheet E2E 후 native `@Tool` parity.
+---
+
+## 12. Phase 3 (진행 중)
+
+구현 계획: [.references/phase3-plan.md](../../.references/phase3-plan.md)
+
+| 작업 | 경로 | 상태 |
+|------|------|------|
+| Skill types | `src/skills/types.ts` | ✅ kickoff |
+| SKILL.md parser | `src/skills/SkillParser.ts` | ✅ Wave 1 |
+| Skill registry | `src/skills/registry.ts` | ✅ Wave 1 |
+| Skill catalog + invoke | `src/skills/skillCatalog.ts` | ✅ S1 |
+| Text skill merge | `PromptTemplateEngine` + `AgentRuntime` | ✅ S1 |
+| Skill import + store | `skillImport.ts`, `SkillStore.ts` | ✅ S2 |
+| Skills tab | `app/(tabs)/skills.tsx` | ✅ S2 |
+| Bundled sample | `src/skills/bundledSkills.ts` | ✅ S2 |
+| JS skill runner | `src/skills/JsSkillRunner.ts` | ✅ S3 |
+| WebView host | `src/skills/JsSkillHost.tsx` | ✅ S3 |
+| Ask Image | chat input + native Content | S4 |
+
+Mock-first: parser/registry unit tests Green → PromptTemplateEngine catalog merge → Skills UI.
 
 ---
 
@@ -255,10 +274,17 @@ Mock: `@react-native-async-storage/async-storage/jest/async-storage-mock`, `lite
 
 ### 10.3 Phase 3 신규 모듈 (순방향 TDD)
 
-| 예정 소스 | 테스트 (선행) |
-|-----------|---------------|
-| `src/skills/SkillParser.ts` | `SkillParser.test.ts` — frontmatter, body merge |
-| `src/skills/registry.ts` | `registry.test.ts` — URL import validation |
+| ✅ | 예정 소스 | 테스트 (선행) | 핵심 케이스 |
+|----|-----------|---------------|-------------|
+| ✅ | `src/skills/SkillParser.ts` | `SkillParser.test.ts` | frontmatter split; name/description validation; `run_js` → javascript kind; HTTPS URL |
+| ✅ | `src/skills/registry.ts` | `registry.test.ts` | register; duplicate reject; enable/disable; unregister |
+| ✅ | `src/skills/skillCatalog.ts` | `skillCatalog.test.ts` | catalog format; slash invoke; active skill block |
+| ✅ | `PromptTemplateEngine.ts` | `PromptTemplateEngine.test.ts` | skill catalog append; active skill merge (§1.14) |
+| ✅ | `AgentRuntime.ts` | `AgentRuntime.test.ts` | skill catalog in systemInstruction; slash strips prefix; URL import persist |
+| ✅ | `src/skills/SkillStore.ts` | `SkillStore.test.ts` | save/load round-trip; corrupt JSON |
+| ✅ | `src/skills/skillImport.ts` | `skillImport.test.ts` | GitHub blob→raw; HTTPS SKILL.md fetch parse |
+| ✅ | `src/skills/JsSkillRunner.ts` | `JsSkillRunner.test.ts` | mock bridge; active skill; disabled skill |
+| ✅ | `src/skills/jsSkillBridge.ts` | `jsSkillBridge.test.ts` | Gallery `run_js` args; network gate; bridge response |
 
 ---
 

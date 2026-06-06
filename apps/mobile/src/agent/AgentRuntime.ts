@@ -11,6 +11,7 @@ import {
   type ToolCall,
   type ToolCallEvent,
   type ToolApprovalRequiredEvent,
+  type RunJsRequiredEvent,
   type ToolDefinition,
   type ToolRiskLevel,
 } from 'litertlm-native';
@@ -34,6 +35,24 @@ import {
 } from './InferenceCoordinator';
 import { createPromptTemplateEngine } from './PromptTemplateEngine';
 import type { StreamChunk } from './StreamChunk';
+import { createSkillParser } from '../skills/SkillParser';
+import type { ParseSkillOptions } from '../skills/SkillParser';
+import { BUNDLED_SKILLS } from '../skills/bundledSkills';
+import { detectSkillInvoke } from '../skills/skillCatalog';
+import {
+  createJsSkillRunner,
+  JsSkillRunner,
+  MockJsSkillWebViewBridge,
+} from '../skills/JsSkillRunner';
+import { getJsSkillHostBridge } from '../skills/jsSkillHostBridge';
+import {
+  importSkillFromUrl as importRemoteSkill,
+  type SkillFetchFn,
+} from '../skills/skillImport';
+import { RUN_JS_TOOL_DEFINITION } from '../skills/runJsTool';
+import { SkillRegistry } from '../skills/registry';
+import { SkillStore } from '../skills/SkillStore';
+import type { InstalledSkill, ParsedSkill, SkillParseResult } from '../skills/types';
 import { ToolRegistry } from './tools/registry';
 import type { JsToolHandler, ToolPolicy } from './tools/types';
 
@@ -63,6 +82,8 @@ export class AgentRuntime {
   readonly modelPreferences = new ModelPreferences();
   readonly agentPreferences = new AgentPreferences();
   readonly toolRegistry = new ToolRegistry();
+  readonly skillRegistry = new SkillRegistry();
+  readonly skillStore = new SkillStore();
   readonly coordinator: InferenceCoordinator;
 
   private engine: LitertLmEngine;
@@ -80,6 +101,11 @@ export class AgentRuntime {
   private approvalGates = new Map<string, ApprovalGate>();
   private streamChunkQueue: StreamChunk[] = [];
   private wakeStream: (() => void) | null = null;
+  private skillsHydrated = false;
+  private skillsHydratePromise: Promise<void> | null = null;
+  private activeJsSkillBySession = new Map<string, string>();
+  private currentToolSessionId: string | null = null;
+  private jsSkillRunner: JsSkillRunner;
 
   constructor(engine?: LitertLmEngine) {
     this.engineConfig = defaultMockConfig();
@@ -89,6 +115,35 @@ export class AgentRuntime {
     });
     this.coordinator.setLastEngineConfig(this.engineConfig);
     this.applyHibernationPolicy();
+    this.jsSkillRunner = createJsSkillRunner({
+      getSkillByName: (name) => this.skillRegistry.get(name),
+      getActiveSkillName: () =>
+        this.currentToolSessionId
+          ? this.activeJsSkillBySession.get(this.currentToolSessionId)
+          : undefined,
+      bridge:
+        resolveEngineMode(this.engineConfig) === 'mock'
+          ? new MockJsSkillWebViewBridge()
+          : getJsSkillHostBridge(),
+    });
+    this.registerRunJsTool();
+  }
+
+  private registerRunJsTool(): void {
+    this.registerTool(
+      async (args) =>
+        this.jsSkillRunner.run({
+          data:
+            typeof args.data === 'string'
+              ? args.data
+              : JSON.stringify(args.data ?? {}),
+          scriptName: typeof args.scriptName === 'string' ? args.scriptName : undefined,
+          skillName: typeof args.skillName === 'string' ? args.skillName : undefined,
+          secret: typeof args.secret === 'string' ? args.secret : undefined,
+        }),
+      RUN_JS_TOOL_DEFINITION,
+      { riskLevel: 'write', requiresApproval: false },
+    );
   }
 
   getEngineMode(): EngineMode {
@@ -124,6 +179,126 @@ export class AgentRuntime {
     policy?: ToolPolicy,
   ): void {
     this.toolRegistry.register(handler, definition, policy);
+  }
+
+  registerSkill(skill: ParsedSkill): void {
+    this.skillRegistry.register(skill);
+  }
+
+  importSkillFromMarkdown(content: string, options?: ParseSkillOptions): SkillParseResult {
+    const parser = createSkillParser();
+    const result = parser.parseSkillMarkdown(content, options);
+    if ('error' in result) {
+      return result;
+    }
+    this.skillRegistry.register(result);
+    return result;
+  }
+
+  async ensureSkillsLoaded(): Promise<void> {
+    if (this.skillsHydrated) {
+      return;
+    }
+    if (this.skillsHydratePromise) {
+      return this.skillsHydratePromise;
+    }
+
+    this.skillsHydratePromise = this.hydrateSkills();
+    try {
+      await this.skillsHydratePromise;
+    } finally {
+      this.skillsHydratePromise = null;
+    }
+  }
+
+  listSkills(): InstalledSkill[] {
+    return this.skillRegistry.list();
+  }
+
+  async importSkillFromUrl(
+    url: string,
+    fetchFn: SkillFetchFn = defaultSkillFetch,
+  ): Promise<SkillParseResult> {
+    await this.ensureSkillsLoaded();
+
+    const result = await importRemoteSkill(url, fetchFn);
+    if ('error' in result) {
+      return result;
+    }
+
+    if (this.skillRegistry.get(result.frontmatter.name)) {
+      return { error: `Skill already installed: ${result.frontmatter.name}` };
+    }
+
+    this.skillRegistry.register(result);
+    await this.persistSkills();
+    return result;
+  }
+
+  async setSkillEnabled(name: string, enabled: boolean): Promise<boolean> {
+    await this.ensureSkillsLoaded();
+    const updated = this.skillRegistry.setEnabled(name, enabled);
+    if (updated) {
+      await this.persistSkills();
+    }
+    return updated;
+  }
+
+  async removeSkill(name: string): Promise<boolean> {
+    await this.ensureSkillsLoaded();
+    const removed = this.skillRegistry.unregister(name);
+    if (removed) {
+      await this.persistSkills();
+    }
+    return removed;
+  }
+
+  private async hydrateSkills(): Promise<void> {
+    const stored = await this.skillStore.load();
+    if (stored.length > 0) {
+      this.skillRegistry.hydrateInstalled(stored);
+      this.skillsHydrated = true;
+      return;
+    }
+
+    const parser = createSkillParser();
+    for (const bundled of BUNDLED_SKILLS) {
+      const parsed = parser.parseSkillMarkdown(bundled.markdown, { source: bundled.source });
+      if ('error' in parsed) {
+        continue;
+      }
+      try {
+        this.skillRegistry.register({
+          ...parsed,
+          scriptHtml: bundled.scriptHtml,
+        });
+      } catch {
+        // ignore duplicate bundled registration during dev hot reload
+      }
+    }
+    await this.persistSkills();
+    this.skillsHydrated = true;
+  }
+
+  private async persistSkills(): Promise<void> {
+    await this.skillStore.save(this.skillRegistry.list());
+  }
+
+  private async buildSystemInstructionForSession(
+    session: StoredSession,
+    activeSkillName?: string,
+  ): Promise<string> {
+    await this.ensureSkillsLoaded();
+    const activeSkill = activeSkillName ? this.skillRegistry.get(activeSkillName) : undefined;
+    return this.promptEngine.buildSystemInstruction(session, {
+      skills: this.skillRegistry.listEnabledRefs(),
+      activeSkill: activeSkill
+        ? {
+            name: activeSkill.frontmatter.name,
+            instructions: activeSkill.instructions,
+          }
+        : undefined,
+    });
   }
 
   async respondToToolApproval(
@@ -240,12 +415,15 @@ export class AgentRuntime {
     this.initialized = true;
   }
 
-  private async buildConversationConfig(session: StoredSession) {
+  private async buildConversationConfig(
+    session: StoredSession,
+    activeSkillName?: string,
+  ) {
     const automaticToolCalling = await this.agentPreferences.getAutomaticToolCalling();
     const sampler = await this.agentPreferences.getSampler();
     return {
       conversationId: session.id,
-      systemInstruction: this.promptEngine.buildSystemInstruction(session),
+      systemInstruction: await this.buildSystemInstructionForSession(session, activeSkillName),
       tools: this.toolRegistry.listDefinitions(),
       automaticToolCalling,
       sampler,
@@ -309,13 +487,16 @@ export class AgentRuntime {
     this.coordinator.setIdleTimeoutMs(resolveIdleTimeoutMs());
   }
 
-  async ensureConversation(session: StoredSession): Promise<void> {
+  async ensureConversation(
+    session: StoredSession,
+    activeSkillName?: string,
+  ): Promise<void> {
     const inflight = this.ensureConversationInflight.get(session.id);
     if (inflight) {
       return inflight;
     }
 
-    const promise = this.runEnsureConversation(session);
+    const promise = this.runEnsureConversation(session, activeSkillName);
     this.ensureConversationInflight.set(session.id, promise);
     try {
       await promise;
@@ -324,7 +505,10 @@ export class AgentRuntime {
     }
   }
 
-  private async runEnsureConversation(session: StoredSession): Promise<void> {
+  private async runEnsureConversation(
+    session: StoredSession,
+    activeSkillName?: string,
+  ): Promise<void> {
     const mode = resolveEngineMode();
     if (mode === 'live') {
       await this.ensureModelLoaded(session.modelId as ModelId);
@@ -339,7 +523,9 @@ export class AgentRuntime {
       );
     }
 
-    await this.engine.createConversation(await this.buildConversationConfig(session));
+    await this.engine.createConversation(
+      await this.buildConversationConfig(session, activeSkillName),
+    );
   }
 
   async ensureModelLoaded(modelId: ModelId): Promise<void> {
@@ -424,12 +610,25 @@ export class AgentRuntime {
       return;
     }
 
-    await this.ensureConversation(session);
+    const enabledSkillNames = this.skillRegistry.listEnabledRefs().map((ref) => ref.name);
+    const invoke = detectSkillInvoke(trimmed, enabledSkillNames);
+    const messageText = invoke?.userText ?? trimmed;
+
+    if (invoke?.skillName) {
+      const skill = this.skillRegistry.get(invoke.skillName);
+      if (skill?.kind === 'javascript') {
+        this.activeJsSkillBySession.set(sessionId, invoke.skillName);
+      } else {
+        this.activeJsSkillBySession.delete(sessionId);
+      }
+    }
+
+    await this.ensureConversation(session, invoke?.skillName);
 
     const userMessage: Message = {
       id: `${sessionId}-user-${Date.now()}`,
       role: 'user',
-      content: trimmed,
+      content: messageText,
       timestamp: Date.now(),
     };
     await this.sessionStore.appendMessage(sessionId, userMessage);
@@ -440,7 +639,7 @@ export class AgentRuntime {
 
     let assistantText = '';
     let assistantThinking = '';
-    const nativeTurn = this.promptEngine.toNativeUserTurn(trimmed, session.messages);
+    const nativeTurn = this.promptEngine.toNativeUserTurn(messageText, session.messages);
     const thinkingEnabled = await this.agentPreferences.getThinkingEnabled();
     const extraContext = this.promptEngine.buildExtraContext({ thinking: thinkingEnabled });
 
@@ -475,6 +674,13 @@ export class AgentRuntime {
         });
       },
     );
+
+    const runJsSub = this.engine.addListener('onRunJsRequired', (event: RunJsRequiredEvent) => {
+      if (event.conversationId !== sessionId) {
+        return;
+      }
+      void this.handleRunJsRequired(event);
+    });
 
     const toolSub = this.engine.addListener('onToolCall', (event: ToolCallEvent) => {
       if (event.conversationId !== sessionId) {
@@ -548,6 +754,7 @@ export class AgentRuntime {
       yield { type: 'error', message };
     } finally {
       approvalSub.remove();
+      runJsSub.remove();
       toolSub.remove();
       this.streamChunkQueue = [];
       this.wakeStream = null;
@@ -609,6 +816,35 @@ export class AgentRuntime {
     await this.executeAndSubmitToolResult(sessionId, toolCall);
   }
 
+  private async handleRunJsRequired(event: RunJsRequiredEvent): Promise<void> {
+    this.currentToolSessionId = event.conversationId;
+    try {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(event.argumentsJson) as Record<string, unknown>;
+      } catch {
+        await this.engine.completeRunJs(
+          event.toolCallId,
+          JSON.stringify({ error: 'Invalid run_js arguments' }),
+        );
+        return;
+      }
+
+      const result = await this.jsSkillRunner.run({
+        data: typeof args.data === 'string' ? args.data : JSON.stringify(args.data ?? {}),
+        scriptName: typeof args.scriptName === 'string' ? args.scriptName : undefined,
+        skillName: typeof args.skillName === 'string' ? args.skillName : undefined,
+        secret: typeof args.secret === 'string' ? args.secret : undefined,
+      });
+      await this.engine.completeRunJs(event.toolCallId, JSON.stringify(result));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.engine.completeRunJs(event.toolCallId, JSON.stringify({ error: message }));
+    } finally {
+      this.currentToolSessionId = null;
+    }
+  }
+
   private async executeAndSubmitToolResult(sessionId: string, toolCall: ToolCall): Promise<void> {
     const registered = this.toolRegistry.get(toolCall.name);
     if (!registered) {
@@ -624,14 +860,31 @@ export class AgentRuntime {
       return;
     }
 
-    const result = await this.toolRegistry.execute(toolCall.name, args);
-    await this.engine.submitToolResult(sessionId, toolCall.id, JSON.stringify(result));
+    this.currentToolSessionId = sessionId;
+    try {
+      const result = await this.toolRegistry.execute(toolCall.name, args);
+      await this.engine.submitToolResult(sessionId, toolCall.id, JSON.stringify(result));
+    } finally {
+      this.currentToolSessionId = null;
+    }
   }
 
   abortGeneration(sessionId: string): void {
     this.abortControllers.get(sessionId)?.abort();
     void this.engine.abortGeneration(sessionId);
   }
+}
+
+async function defaultSkillFetch(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    return {
+      ok: false as const,
+      status: response.status,
+      error: `Failed to fetch skill (${response.status})`,
+    };
+  }
+  return { ok: true as const, text: await response.text() };
 }
 
 let runtimeSingleton: AgentRuntime | null = null;

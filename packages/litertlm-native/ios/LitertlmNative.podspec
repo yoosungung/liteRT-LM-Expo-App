@@ -29,6 +29,7 @@ Pod::Spec.new do |s|
     'EngineBridge.swift',
     'DeviceTools.swift',
     'ToolApprovalGate.swift',
+    'RunJsGate.swift',
     'Sha256Verifier.swift',
     'TokenBatcher.swift',
     'MemoryPressureHandler.swift',

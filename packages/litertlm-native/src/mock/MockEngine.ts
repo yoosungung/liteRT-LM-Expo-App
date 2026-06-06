@@ -228,6 +228,23 @@ export class MockEngine implements LitertLmEngine {
             }
           }
         }
+      } else if (trigger.name === 'run_js') {
+        this.emit('onToolCall', { conversationId, toolCall });
+        const resultJson = await this.waitForToolResult(
+          toolCall.id,
+          conversationId,
+          trigger,
+          toolCall,
+        );
+        if (resultJson === null) {
+          toolDenied = true;
+        } else {
+          try {
+            toolResult = JSON.parse(resultJson) as Record<string, unknown>;
+          } catch {
+            toolResult = { raw: resultJson };
+          }
+        }
       } else {
         toolResult = mockReadToolResult(trigger.name);
       }
@@ -316,6 +333,10 @@ export class MockEngine implements LitertLmEngine {
     }
     pending.resolveResult?.(resultJson);
     this.pendingTools.delete(toolCallId);
+  }
+
+  async completeRunJs(_toolCallId: string, _resultJson: string): Promise<void> {
+    // Live-only native bridge; mock uses onToolCall + submitToolResult.
   }
 
   async abortGeneration(conversationId: string): Promise<void> {

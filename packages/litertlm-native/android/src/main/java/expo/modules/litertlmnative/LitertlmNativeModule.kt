@@ -53,6 +53,16 @@ class LitertlmNativeModule : Module() {
           ),
         )
       }
+      onRunJsRequired = { conversationId, toolCallId, argumentsJson ->
+        sendEvent(
+          "onRunJsRequired",
+          mapOf(
+            "conversationId" to conversationId,
+            "toolCallId" to toolCallId,
+            "argumentsJson" to argumentsJson,
+          ),
+        )
+      }
     }
   }
 
@@ -71,6 +81,7 @@ class LitertlmNativeModule : Module() {
       "onStreamDelta",
       "onMessageComplete",
       "onToolApprovalRequired",
+      "onRunJsRequired",
       "onError",
       "onSha256VerifyProgress",
     )
@@ -109,6 +120,10 @@ class LitertlmNativeModule : Module() {
       approved: Boolean,
       ->
       engineBridge.approveToolCall(conversationId, toolCallId, approved)
+    }
+
+    AsyncFunction("completeRunJs") { toolCallId: String, resultJson: String ->
+      engineBridge.completeRunJs(toolCallId, resultJson)
     }
 
     AsyncFunction("rejectToolCall") { conversationId: String, toolCallId: String, reason: String? ->

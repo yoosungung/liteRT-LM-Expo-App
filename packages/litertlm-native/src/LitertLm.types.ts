@@ -134,6 +134,12 @@ export interface ToolApprovalRequiredEvent {
   riskLevel: ToolRiskLevel;
 }
 
+export interface RunJsRequiredEvent {
+  conversationId: string;
+  toolCallId: string;
+  argumentsJson: string;
+}
+
 export type LitertLmEventMap = {
   onEngineStatusChanged: EngineStatus;
   onInferenceLifecycleChanged: InferenceLifecycleEvent;
@@ -141,6 +147,7 @@ export type LitertLmEventMap = {
   onMessageComplete: { conversationId: string; message: Message };
   onToolCall: ToolCallEvent;
   onToolApprovalRequired: ToolApprovalRequiredEvent;
+  onRunJsRequired: RunJsRequiredEvent;
   onError: LitertLmError;
 };
 

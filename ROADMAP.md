@@ -211,14 +211,29 @@ Phase 3 작업(예: `SKILL.md` parser)은 ROADMAP 항목마다 **테스트 파�
 
 **목표:** Gallery Skills 패턴 이식, 이미지 입력.
 
-| # | 작업 |
-|---|------|
-| 3.1 | `SKILL.md` 파서 + skill registry |
-| 3.2 | Text-only skills (system prompt merge) |
-| 3.3 | JS skills — hidden WebView (`ai_edge_gallery_get_result` 호환) |
-| 3.4 | Native intent tools (expo-linking, share, clipboard) |
-| 3.5 | Ask Image — camera/gallery → `Content.ImageFile` |
-| 3.6 | Skill marketplace UI (URL import) |
+**구현 계획:** [.references/phase3-plan.md](./.references/phase3-plan.md)  
+**전제:** Phase 2 완료 ✅ · TDD T0–T6 ✅ · **순방향 TDD 필수**
+
+### Kickoff 체크리스트
+
+- [x] Phase 3 계획 문서 (`phase3-plan.md`)
+- [x] ARCHITECTURE §1.14 Agent Skills 계약 + §2.11 스키마
+- [x] `src/skills/` 스켈레톤 — `SkillParser`, `SkillRegistry`, `types`
+- [x] Wave 1 Red→Green — `SkillParser.test.ts`, `registry.test.ts`
+- [x] 3.2 Text skills — `PromptTemplateEngine` catalog merge + slash invoke
+- [x] 3.6 Skills tab UI + URL import
+- [x] 3.3 JS skills WebView runner
+- [ ] 3.4 Native intent tools
+- [ ] 3.5 Ask Image multimodal
+
+| # | 작업 | Wave |
+|---|------|------|
+| 3.1 | `SKILL.md` 파서 + skill registry | 1 ✅ |
+| 3.2 | Text-only skills (system prompt merge) | 1 ✅ |
+| 3.3 | JS skills — hidden WebView (`ai_edge_gallery_get_result` 호환) | 2 ✅ |
+| 3.4 | Native intent tools (expo-linking, share, clipboard) | 2 |
+| 3.5 | Ask Image — camera/gallery → `Content.ImageFile` | 3 |
+| 3.6 | Skill marketplace UI (URL import) | 2 ✅ |
 
 **레퍼런스:** [.references/gallery-agent-skills.md](./.references/gallery-agent-skills.md)
 
@@ -296,6 +311,10 @@ Phase 3 작업(예: `SKILL.md` parser)은 ROADMAP 항목마다 **테스트 파�
 8. ~~Phase 2 S4~~ ✅ — KV persist/hibernate stack + Snapshot UI + Smart Eviction (2026-06-06)
 9. ~~Phase 2 S4 iOS live E2E~~ ✅ — iPhone 16e: build + hibernate/restore (2026-06-06)
 10. ~~**TDD Wave T0–T6**~~ ✅ — Vitest/Jest + CI + 레거시 회귀 + mock-smoke 흡수 (2026-06-06)
-11. **Phase 3 kickoff** — Skills registry + `SKILL.md` parser (**테스트 선행**)
-12. **TDD T7 (선택)** — Maestro `.maestro/flows/mock-chat.yaml` on device
-13. **TDD T8 (선택)** — Kotlin `ConversationConfigJson` JUnit
+11. ~~**Phase 3 kickoff**~~ ✅ — `phase3-plan.md` + §1.14/§2.11 + `SkillParser`/`SkillRegistry` (2026-06-06)
+12. ~~**Phase 3 S1**~~ ✅ — skill catalog merge + `/skill-name` invoke (2026-06-06)
+13. ~~**Phase 3 S2**~~ ✅ — Skills tab + URL import + AsyncStorage persist (2026-06-06)
+14. ~~**Phase 3 S3**~~ ✅ — JS skills WebView + `run_js` tool + bundled `hash-demo` (2026-06-06)
+15. **Phase 3 S4** — Ask Image multimodal (`Content.ImageFile`)
+16. **TDD T7 (선택)** — Maestro `.maestro/flows/mock-chat.yaml` on device
+17. **TDD T8 (선택)** — Kotlin `ConversationConfigJson` JUnit

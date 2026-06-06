@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Phase 1 — LiteRT-LM Engine wrapper + InferenceStateBridge skeleton (iOS parity with Android).
 final class EngineBridge {
@@ -8,12 +7,13 @@ final class EngineBridge {
   private var conversations: [String: Conversation] = [:]
   private var generationTasks: [String: Task<Void, Never>] = [:]
   private let toolApprovalGate = ToolApprovalGate()
+  private let runJsGate = RunJsGate()
   private var lastModelPath: String?
   private var lastBackend = "cpu"
   private var lastCacheDir: String?
   private var persistKvOnHibernate = true
   var onHibernationPolicyChanged: ((Bool) -> Void)?
-  private let stateLock = OSAllocatedUnfairLock()
+  private let stateLock = NSLock()
 
   var onLifecycleChanged: ((String, String) -> Void)?
   var onStreamDelta: ((String, String, String) -> Void)?
@@ -26,6 +26,15 @@ final class EngineBridge {
     _ argumentsJson: String,
     _ riskLevel: String
   ) -> Void)?
+  var onRunJsRequired: ((
+    _ conversationId: String,
+    _ toolCallId: String,
+    _ argumentsJson: String
+  ) -> Void)?
+
+  func completeRunJs(toolCallId: String, resultJson: String) {
+    runJsGate.complete(toolCallId: toolCallId, resultJson: resultJson)
+  }
 
   func getLifecycle() -> String {
     lifecycle
@@ -114,8 +123,12 @@ final class EngineBridge {
       BuiltinToolContext.configure(
         conversationId: conversationId,
         approvalGate: toolApprovalGate,
+        runJsGate: runJsGate,
         onApprovalRequired: { [weak self] convId, toolCallId, name, argumentsJson, riskLevel in
           self?.onToolApprovalRequired?(convId, toolCallId, name, argumentsJson, riskLevel)
+        },
+        onRunJsRequired: { [weak self] convId, toolCallId, argumentsJson in
+          self?.onRunJsRequired?(convId, toolCallId, argumentsJson)
         }
       )
       config = ConversationConfig(
@@ -310,7 +323,9 @@ final class EngineBridge {
   }
 
   private func withStateLock<T>(_ body: () -> T) -> T {
-    stateLock.withLock(body)
+    stateLock.lock()
+    defer { stateLock.unlock() }
+    return body()
   }
 
   private static func createEngineOnBackground(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MockEngine } from 'litertlm-native';
+import { MockEngine, type ConversationConfig } from 'litertlm-native';
 
 import { AgentRuntime } from './AgentRuntime';
 
@@ -9,6 +9,15 @@ async function collectStream(runtime: AgentRuntime, sessionId: string, text: str
     chunks.push(chunk);
   }
   return chunks;
+}
+
+class ConfigCapturingMockEngine extends MockEngine {
+  lastConversationConfig: ConversationConfig | null = null;
+
+  async createConversation(config: ConversationConfig): Promise<void> {
+    this.lastConversationConfig = config;
+    return super.createConversation(config);
+  }
 }
 
 describe('AgentRuntime integration', () => {
@@ -104,5 +113,70 @@ describe('AgentRuntime integration', () => {
       .join('');
 
     expect(text.toLowerCase()).toContain('denied');
+  });
+
+  it('includes skill catalog in conversation systemInstruction when skills are registered', async () => {
+    const engine = new ConfigCapturingMockEngine();
+    const runtime = new AgentRuntime(engine);
+    await runtime.ensureSkillsLoaded();
+
+    const session = await runtime.createSession();
+    await collectStream(runtime, session.id, '/fitness-coach I need a quick workout');
+
+    expect(engine.lastConversationConfig?.systemInstruction).toContain('## Agent Skills');
+    expect(engine.lastConversationConfig?.systemInstruction).toContain(
+      '**fitness-coach**: A cheerful, high-energy fitness coach',
+    );
+    expect(engine.lastConversationConfig?.systemInstruction).toContain('## Active skill: fitness-coach');
+    expect(engine.lastConversationConfig?.systemInstruction).toContain('upbeat fitness coach');
+
+    const stored = await runtime.sessionStore.getSession(session.id);
+    expect(stored?.messages.find((m) => m.role === 'user')?.content).toBe(
+      'I need a quick workout',
+    );
+  });
+
+  it('importSkillFromUrl registers a remote skill and persists it', async () => {
+    const runtime = new AgentRuntime(new MockEngine());
+    await runtime.ensureSkillsLoaded();
+
+    const result = await runtime.importSkillFromUrl(
+      'https://example.com/skills/wiki-helper/SKILL.md',
+      async () => ({
+        ok: true,
+        text: `---
+name: wiki-helper
+description: Summarizes topics using concise bullet points.
+---
+
+# Wiki Helper
+`,
+      }),
+    );
+    expect('error' in result).toBe(false);
+    expect(runtime.listSkills().some((s) => s.frontmatter.name === 'wiki-helper')).toBe(true);
+
+    const reloaded = new AgentRuntime(new MockEngine());
+    await reloaded.ensureSkillsLoaded();
+    expect(reloaded.listSkills().some((s) => s.frontmatter.name === 'wiki-helper')).toBe(true);
+  });
+
+  it('executes bundled hash-demo JS skill via run_js in mock mode', async () => {
+    const runtime = new AgentRuntime(new MockEngine());
+    await runtime.ensureSkillsLoaded();
+
+    const session = await runtime.createSession();
+    const chunks = await collectStream(
+      runtime,
+      session.id,
+      '/hash-demo reverse text hello',
+    );
+
+    const text = chunks
+      .filter((c) => c.type === 'token')
+      .map((c) => (c.type === 'token' ? c.text : ''))
+      .join('');
+
+    expect(text).toContain('hash-demo:olleh');
   });
 });

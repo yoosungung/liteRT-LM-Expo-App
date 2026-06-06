@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AgentProvider } from '../src/context/AgentContext';
+import { JsSkillHostProvider } from '../src/skills/JsSkillHost';
 import { resolveEngineMode } from 'litertlm-native';
 
 import { getAgentRuntime } from '../src/agent/AgentRuntime';
@@ -27,7 +28,8 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AgentProvider>
-        <View style={styles.root}>
+        <JsSkillHostProvider>
+          <View style={styles.root}>
           <StatusBar style="auto" />
           <Stack
             screenOptions={{
@@ -45,7 +47,8 @@ export default function RootLayout() {
               </Text>
             </View>
           ) : null}
-        </View>
+          </View>
+        </JsSkillHostProvider>
       </AgentProvider>
     </SafeAreaProvider>
   );

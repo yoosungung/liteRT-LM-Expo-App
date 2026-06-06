@@ -31,6 +31,7 @@ class EngineBridge(private val context: Context) {
   private val conversations = ConcurrentHashMap<String, Conversation>()
   private val generationJobs = ConcurrentHashMap<String, Job>()
   private val toolApprovalGate = ToolApprovalGate()
+  private val runJsGate = RunJsGate()
   private var lifecycle: String = "unloaded"
   private var engine: Engine? = null
   private var lastModelPath: String? = null
@@ -50,6 +51,15 @@ class EngineBridge(private val context: Context) {
     argumentsJson: String,
     riskLevel: String,
   ) -> Unit)? = null
+  var onRunJsRequired: ((
+    conversationId: String,
+    toolCallId: String,
+    argumentsJson: String,
+  ) -> Unit)? = null
+
+  fun completeRunJs(toolCallId: String, resultJson: String) {
+    runJsGate.complete(toolCallId, resultJson)
+  }
 
   fun getLifecycle(): String = lifecycle
 
@@ -306,6 +316,7 @@ class EngineBridge(private val context: Context) {
                 context = context,
                 conversationId = conversationId,
                 approvalGate = toolApprovalGate,
+                runJsGate = runJsGate,
                 onApprovalRequired = { convId, toolCallId, name, argumentsJson, riskLevel ->
                   onToolApprovalRequired?.invoke(
                     convId,
@@ -314,6 +325,9 @@ class EngineBridge(private val context: Context) {
                     argumentsJson,
                     riskLevel,
                   )
+                },
+                onRunJsRequired = { convId, toolCallId, argumentsJson ->
+                  onRunJsRequired?.invoke(convId, toolCallId, argumentsJson)
                 },
               ),
             ),

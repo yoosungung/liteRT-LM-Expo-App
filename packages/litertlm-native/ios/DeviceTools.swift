@@ -4,6 +4,7 @@ import UIKit
 enum BuiltinToolContext {
   static var conversationId: String = ""
   static var approvalGate = ToolApprovalGate()
+  static var runJsGate = RunJsGate()
   static var onApprovalRequired: (
     _ conversationId: String,
     _ toolCallId: String,
@@ -11,25 +12,38 @@ enum BuiltinToolContext {
     _ argumentsJson: String,
     _ riskLevel: String
   ) -> Void = { _, _, _, _, _ in }
+  static var onRunJsRequired: (
+    _ conversationId: String,
+    _ toolCallId: String,
+    _ argumentsJson: String
+  ) -> Void = { _, _, _ in }
 
   static func configure(
     conversationId: String,
     approvalGate: ToolApprovalGate,
+    runJsGate: RunJsGate,
     onApprovalRequired: @escaping (
       _ conversationId: String,
       _ toolCallId: String,
       _ name: String,
       _ argumentsJson: String,
       _ riskLevel: String
+    ) -> Void,
+    onRunJsRequired: @escaping (
+      _ conversationId: String,
+      _ toolCallId: String,
+      _ argumentsJson: String
     ) -> Void
   ) {
     Self.conversationId = conversationId
     Self.approvalGate = approvalGate
+    Self.runJsGate = runJsGate
     Self.onApprovalRequired = onApprovalRequired
+    Self.onRunJsRequired = onRunJsRequired
   }
 
   static func builtinTools() -> [Tool] {
-    [GetCurrentTimeTool(), GetDeviceInfoTool(), OpenUrlTool()]
+    [GetCurrentTimeTool(), GetDeviceInfoTool(), OpenUrlTool(), RunJsTool()]
   }
 }
 
@@ -51,12 +65,14 @@ struct GetDeviceInfoTool: Tool {
   init() {}
 
   func run() async throws -> Any {
-    [
-      "platform": "ios",
-      "modelName": UIDevice.current.model,
-      "osVersion": UIDevice.current.systemVersion,
-      "isDevice": !isSimulator(),
-    ] as [String: Any]
+    await MainActor.run {
+      [
+        "platform": "ios",
+        "modelName": UIDevice.current.model,
+        "osVersion": UIDevice.current.systemVersion,
+        "isDevice": !isSimulator(),
+      ] as [String: Any]
+    }
   }
 
   private func isSimulator() -> Bool {
@@ -115,6 +131,52 @@ struct OpenUrlTool: Tool {
       UIApplication.shared.open(openURL)
     }
     return ["opened": true, "url": trimmed]
+  }
+}
+
+struct RunJsTool: Tool {
+  static let name = "run_js"
+  static let description =
+    "Execute the active JavaScript skill in a sandboxed WebView. Pass stringified JSON in `data` per the skill SKILL.md schema."
+
+  @ToolParam(description: "Stringified JSON parameters for window.ai_edge_gallery_get_result")
+  var data: String
+
+  @ToolParam(description: "Skill script entrypoint, typically index.html")
+  var scriptName: String
+
+  @ToolParam(description: "Optional skill id override when multiple JS skills are installed")
+  var skillName: String
+
+  init() {
+    self.data = ""
+    self.scriptName = ""
+    self.skillName = ""
+  }
+
+  func run() async throws -> Any {
+    let conversationId = BuiltinToolContext.conversationId
+    let toolCallId = "\(conversationId)-tool-runJs-\(Int(Date().timeIntervalSince1970 * 1000))"
+    var args: [String: Any] = ["data": data]
+    if !scriptName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      args["scriptName"] = scriptName
+    }
+    if !skillName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      args["skillName"] = skillName
+    }
+    let argumentsJson =
+      String(data: try JSONSerialization.data(withJSONObject: args), encoding: .utf8) ?? "{}"
+
+    let resultJson = await BuiltinToolContext.runJsGate.awaitResult(toolCallId: toolCallId) {
+      BuiltinToolContext.onRunJsRequired(conversationId, toolCallId, argumentsJson)
+    }
+
+    if let jsonData = resultJson.data(using: String.Encoding.utf8),
+       let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+    {
+      return obj
+    }
+    return ["raw": resultJson]
   }
 }
 

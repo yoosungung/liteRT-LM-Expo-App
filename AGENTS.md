@@ -58,7 +58,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 
 ## 3. Status
 
-**Phase 2 완료 (2026-06-06).** S4 KV persist/hibernate stack ✅ · **TDD Rollout T0–T6** ✅ · Phase 3 대기.
+**Phase 3 S3 완료 (2026-06-06).** `run_js` + JsSkillRunner + hidden WebView host ✅ · **S4 Ask Image** 대기.
 
 | 항목 | 상태 |
 |------|------|
@@ -90,5 +90,9 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 2 S4 | **완료** — KV snapshot metadata + message replay fallback, Smart Eviction, Snapshot UI, Idle→Hibernate |
 | Phase 2 S4 iOS live E2E | **완료** — iPhone **16e** Simulator: build, hibernate/restore, restoring UI (manual 2026-06-06) |
 | TDD T0–T6 | **완료** — `pnpm test` 103건 (Vitest+Jest) · CI · mock-smoke 흡수 |
+| Phase 3 kickoff | **완료** — `phase3-plan.md`, `SkillParser`, `SkillRegistry` + tests |
+| Phase 3 S1 | **완료** — `skillCatalog`, PromptTemplateEngine merge, AgentRuntime invoke |
+| Phase 3 S2 | **완료** — Skills tab, `skillImport`, `SkillStore`, bundled `fitness-coach` |
+| Phase 3 S3 | **완료** — `run_js` tool, `JsSkillRunner`, `JsSkillHost`, bundled `hash-demo` |
 
-다음: **Phase 3** Skills registry + `SKILL.md` parser (순방향 TDD).
+다음: **Phase 3 S4** — Ask Image multimodal (순방향 TDD).

@@ -124,6 +124,16 @@ LLM은 수백 MB~수 GB RAM을 점유한다. iOS/Android는 백그라운드·메
 - **Snapshot UI**: 마지막 채팅 화면 static snapshot → cold start instant feel.
 - **Loading skeleton**: `loading`/`restoring` 중 progressive copy ("문맥을 복원하는 중…").
 
+### 1.14 Agent Skills (Phase 3+)
+
+- **Skills는 사용자 기기에 로컬 저장**한다. `SKILL.md` import·enable/disable은 사용자(또는 dev)가 명시적으로 수행한다.
+- System prompt에는 **skill catalog**(name + description)만 노출한다. 전체 instructions body는 **skill invoke 시** PromptTemplateEngine이 merge한다 (§1.9).
+- Skill 포맷은 Gallery / [Agent Skills spec](https://agentskills.io/specification) `SKILL.md` frontmatter를 따른다. `name`·`description`은 spec 검증 필수.
+- **Text-only skill**은 추가 런타임 없이 prompt merge만으로 동작한다.
+- **JavaScript skill**은 hidden WebView sandbox에서 실행한다. `window.ai_edge_gallery_get_result` 계약을 따른다. WebView는 AgentRuntime/추론 스레드와 분리한다.
+- Skill import URL fetch는 **HTTPS only**. import·JS skill의 네트워크는 §1.1 추론 오프라인 규칙과 별도(사용자-initiated)이며, **추론 중 외부 API 호출을 skill이 암묵적으로 허용하지 않는다** — `compatibility`·승인 정책으로 opt-in.
+- Native intent skill(share, open URL 등)은 §1.10 approval 정책을 따른다.
+
 ### 1.13 테스트·TDD (Test-First)
 
 로직 변경·신규 기능은 **테스트 선행(TDD)** 을 기본으로 한다. 수동 E2E·스모크 스크립트만으로 완료를 인정하지 않는다.
@@ -141,7 +151,7 @@ LLM은 수백 MB~수 GB RAM을 점유한다. iOS/Android는 백그라운드·메
 | 대상 | 요구 | 실행 |
 |------|------|------|
 | `packages/litertlm-native` JS/TS (Mock, batcher, config, types) | **단위·통합 테스트 필수** | `pnpm litertlm-native test` |
-| `apps/mobile` 순수 로직 (`src/agent`, `src/models`, `src/storage`, `src/benchmark`) | **단위 테스트 필수** | `pnpm mobile test` |
+| `apps/mobile` 순수 로직 (`src/agent`, `src/models`, `src/storage`, `src/benchmark`, `src/skills`) | **단위 테스트 필수** | `pnpm mobile test` |
 | `apps/mobile` RN 컴포넌트 | **렌더·상호작용 테스트** (Wave T5+) | `pnpm mobile test` |
 | ARCHITECTURE §1 계약 (§1.7 batching, §1.8 verify, §1.10 approval, §1.12 lifecycle) | **회귀 테스트 1건 이상** | 해당 패키지 `test` |
 | Kotlin/Swift bridge | JS Mock 통합 + (선택) Robolectric/XCTest | Wave T8 |
@@ -536,6 +546,62 @@ UI: 접기/펼치기 (Gallery Thinking Mode UX 참고).
 | Tools | native ToolSet | JS-only simulation |
 
 `apps/mobile`은 `litertlm-native` factory를 통해 mode 선택; **AgentRuntime·UI 코드 분기 없음**.
+
+### 2.11 Agent Skills (Phase 3+)
+
+```typescript
+type SkillKind = 'text' | 'javascript' | 'native';
+
+interface SkillFrontmatter {
+  name: string;           // kebab-case, 1–64, Agent Skills spec
+  description: string;    // 1–1024
+  license?: string;
+  compatibility?: string;
+  metadata?: Record<string, string>;
+  'allowed-tools'?: string;
+}
+
+interface ParsedSkill {
+  frontmatter: SkillFrontmatter;
+  instructions: string;   // markdown body after frontmatter
+  kind: SkillKind;
+  source: SkillSource;
+  scriptHtml?: string;    // bundled index.html for javascript skills
+}
+
+interface SkillSource {
+  type: 'bundled' | 'url' | 'file';
+  uri: string;
+}
+
+interface SkillRef {
+  name: string;
+  description: string;
+}
+
+interface InstalledSkill extends ParsedSkill {
+  enabled: boolean;
+  installedAt: number;
+}
+
+interface SkillRegistry {
+  register(skill: ParsedSkill): void;
+  unregister(name: string): boolean;
+  list(): InstalledSkill[];
+  listEnabledRefs(): SkillRef[];
+  get(name: string): InstalledSkill | undefined;
+  setEnabled(name: string, enabled: boolean): boolean;
+}
+
+interface SkillParser {
+  parseSkillMarkdown(content: string): ParsedSkill | { error: string };
+  validateSkillImportUrl(url: string): { ok: true; url: string } | { ok: false; error: string };
+}
+```
+
+- **Kind detection**: default `text`; body 또는 frontmatter가 `run_js`를 지시하면 `javascript` (Wave 2).
+- **Persistence**: `@react-native-async-storage/async-storage` — `InstalledSkill[]` JSON (구현 시).
+- PromptTemplateEngine §2.4: `buildSystemInstruction(session, skills?: SkillRef[])`.
 
 ### 2.10 Lifecycle 시퀀스 (참고)
 

@@ -41,6 +41,7 @@ export interface LitertLmEngine {
   approveToolCall(conversationId: string, toolCallId: string, approved: boolean): Promise<void>;
   rejectToolCall(conversationId: string, toolCallId: string, reason?: string): Promise<void>;
   submitToolResult(conversationId: string, toolCallId: string, resultJson: string): Promise<void>;
+  completeRunJs(toolCallId: string, resultJson: string): Promise<void>;
   abortGeneration(conversationId: string): Promise<void>;
   addListener<T extends LitertLmEventName>(
     eventName: T,
