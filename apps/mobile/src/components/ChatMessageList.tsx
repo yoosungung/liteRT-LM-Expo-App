@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import type { Message } from 'litertlm-native';
 
@@ -7,6 +8,8 @@ interface ChatMessageListProps {
 }
 
 export function ChatMessageList({ messages, streamingText }: ChatMessageListProps) {
+  const listRef = useRef<FlatList<Message>>(null);
+
   const data = streamingText
     ? [
         ...messages,
@@ -19,11 +22,26 @@ export function ChatMessageList({ messages, streamingText }: ChatMessageListProp
       ]
     : messages;
 
+  const scrollToBottom = useCallback((animated: boolean) => {
+    if (data.length === 0) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToEnd({ animated });
+    });
+  }, [data.length]);
+
+  useEffect(() => {
+    scrollToBottom(false);
+  }, [messages.length, streamingText, scrollToBottom]);
+
   return (
     <FlatList
+      ref={listRef}
+      style={styles.listContainer}
       data={data}
       keyExtractor={(item) => item.id}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={styles.listContent}
       renderItem={({ item }) => (
         <View
           style={[
@@ -37,12 +55,21 @@ export function ChatMessageList({ messages, streamingText }: ChatMessageListProp
           </Text>
         </View>
       )}
+      onContentSizeChange={() => scrollToBottom(false)}
+      onLayout={() => scrollToBottom(false)}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
     />
   );
 }
 
 const styles = StyleSheet.create({
-  list: {
+  listContainer: {
+    flex: 1,
+  },
+  listContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
     padding: 16,
     gap: 12,
   },

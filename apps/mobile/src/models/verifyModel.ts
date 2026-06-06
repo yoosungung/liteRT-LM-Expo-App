@@ -107,10 +107,40 @@ export function modelLocalPath(modelId: string): string {
   return modelFile(modelId).uri;
 }
 
+/** LiteRT-LM native expects a plain filesystem path (no `file://`). */
+export function toNativeFilesystemPath(uriOrPath: string): string {
+  if (!uriOrPath.startsWith('file://')) {
+    return uriOrPath;
+  }
+  try {
+    return decodeURIComponent(new URL(uriOrPath).pathname);
+  } catch {
+    return uriOrPath.replace(/^file:\/\//, '');
+  }
+}
+
+export function modelNativePath(modelId: string): string {
+  return toNativeFilesystemPath(modelFile(modelId).uri);
+}
+
+export function isModelFileReady(modelId: string, expectedBytes: number): boolean {
+  const file = modelFile(modelId);
+  if (!file.exists) {
+    return false;
+  }
+  const size = file.size ?? 0;
+  return size > 0 && Math.abs(size - expectedBytes) <= expectedBytes * 0.02;
+}
+
 export function inferenceCacheDirectory(): Directory {
   const dir = new Directory(Paths.cache, 'litertlm');
   if (!dir.exists) {
     dir.create({ intermediates: true, idempotent: true });
   }
   return dir;
+}
+
+/** Native LiteRT-LM expects a filesystem path, not a `file://` URI. */
+export function inferenceCachePath(): string {
+  return inferenceCacheDirectory().uri.replace(/^file:\/\//, '');
 }

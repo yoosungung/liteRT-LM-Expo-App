@@ -1,9 +1,7 @@
-import Constants from 'expo-constants';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +10,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
+import { defaultPreferredBackend, isEmulator } from '../../src/agent/deviceProfile';
 import { useAgentRuntime } from '../../src/context/AgentContext';
 import { MODEL_MANIFEST, type ModelInstallState } from '../../src/models/manifest';
 
@@ -78,19 +77,19 @@ export default function ModelsScreen() {
 
   const useModel = async (id: ModelInstallState['id']) => {
     setBusyId(id);
-    const preferGpu = Platform.OS === 'ios' ? Constants.isDevice : true;
     try {
-      const { backend } = await runtime.loadModel(id, preferGpu ? 'gpu' : 'cpu');
+      const { backend } = await runtime.loadModel(id, defaultPreferredBackend());
       Alert.alert(
         'Model loaded',
         `Gemma 4 ${id} is ready (${engineMode} mode, ${backend} backend). Open Chats to start inference.`,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Load failed';
-      const tip =
-        Platform.OS === 'ios' && !Constants.isDevice
-          ? 'iOS Simulator uses CPU only. If this persists, restart the app and retry (E2B needs ~600MB+ RAM).'
-          : 'Android emulator often needs CPU backend (auto-fallback after GPU).';
+      const tip = message.includes('MODEL_NOT_FOUND')
+        ? 'Model file is missing on this device. Tap Download again on the Models tab.'
+        : isEmulator()
+          ? 'Emulator uses CPU only. E2B needs ~2GB+ free RAM — increase AVD RAM (8GB) or use a physical device.'
+          : 'Try CPU backend if GPU fails on this device.';
       Alert.alert('Load failed', `${message}\n\nTip: ${tip}`);
     } finally {
       setBusyId(null);

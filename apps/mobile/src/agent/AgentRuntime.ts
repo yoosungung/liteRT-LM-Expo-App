@@ -10,13 +10,14 @@ import {
   type Message,
 } from 'litertlm-native';
 
-import Constants from 'expo-constants';
-import { Platform } from 'react-native';
-
 import type { ModelId } from '../models/manifest';
 import { ModelManager } from '../models/ModelManager';
 import { ModelPreferences } from '../models/ModelPreferences';
-import { inferenceCacheDirectory } from '../models/verifyModel';
+import { inferenceCachePath } from '../models/verifyModel';
+import {
+  defaultPreferredBackend,
+  resolvePreferredBackend,
+} from './deviceProfile';
 import { createSessionId, SessionStore, type StoredSession } from '../storage/SessionStore';
 import { InferenceCoordinator } from './InferenceCoordinator';
 import { createPromptTemplateEngine } from './PromptTemplateEngine';
@@ -34,17 +35,6 @@ function isEngineLifecycleReady(lifecycle: InferenceLifecycle): boolean {
 
 const MODEL_IDS: ModelId[] = ['gemma-4-e2b', 'gemma-4-e4b'];
 
-function isIosSimulator(): boolean {
-  return Platform.OS === 'ios' && Constants.isDevice === false;
-}
-
-function resolvePreferredBackend(preferred: Backend): Backend {
-  if (isIosSimulator()) {
-    return 'cpu';
-  }
-  return preferred;
-}
-
 export class AgentRuntime {
   readonly sessionStore = new SessionStore();
   readonly modelManager = new ModelManager();
@@ -61,6 +51,7 @@ export class AgentRuntime {
   private abortControllers = new Map<string, AbortController>();
   private loadModelPromise: Promise<{ backend: Backend }> | null = null;
   private loadingModelId: ModelId | null = null;
+  private ensureConversationInflight = new Map<string, Promise<void>>();
 
   constructor(engine?: LitertLmEngine) {
     this.engineConfig = defaultMockConfig();
@@ -142,7 +133,7 @@ export class AgentRuntime {
       mode,
       backend,
       modelPath: modelPath ?? undefined,
-      cacheDir: inferenceCacheDirectory().uri,
+      cacheDir: inferenceCachePath(),
     };
 
     if (this.initialized) {
@@ -186,6 +177,21 @@ export class AgentRuntime {
   }
 
   async ensureConversation(session: StoredSession): Promise<void> {
+    const inflight = this.ensureConversationInflight.get(session.id);
+    if (inflight) {
+      return inflight;
+    }
+
+    const promise = this.runEnsureConversation(session);
+    this.ensureConversationInflight.set(session.id, promise);
+    try {
+      await promise;
+    } finally {
+      this.ensureConversationInflight.delete(session.id);
+    }
+  }
+
+  private async runEnsureConversation(session: StoredSession): Promise<void> {
     const mode = resolveEngineMode();
     if (mode === 'live') {
       await this.ensureModelLoaded(session.modelId as ModelId);
@@ -238,7 +244,9 @@ export class AgentRuntime {
     }
 
     const lastUsed = await this.modelPreferences.getLastUsed();
-    const preferredBackend = resolvePreferredBackend(lastUsed?.backend ?? 'gpu');
+    const preferredBackend = resolvePreferredBackend(
+      lastUsed?.backend ?? defaultPreferredBackend(),
+    );
 
     this.loadingModelId = resolvedId;
     this.loadModelPromise = this.loadModel(resolvedId, preferredBackend);

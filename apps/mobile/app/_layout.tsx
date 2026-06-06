@@ -5,13 +5,17 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AgentProvider } from '../src/context/AgentContext';
+import { resolveEngineMode } from 'litertlm-native';
+
 import { getAgentRuntime } from '../src/agent/AgentRuntime';
 import { mapAppState } from '../src/agent/InferenceCoordinator';
 
 export default function RootLayout() {
   useEffect(() => {
     const runtime = getAgentRuntime();
-    void runtime.initialize();
+    if (resolveEngineMode() === 'mock') {
+      void runtime.initialize();
+    }
 
     const sub = AppState.addEventListener('change', (next) => {
       void runtime.coordinator.onAppStateChange(mapAppState(next));

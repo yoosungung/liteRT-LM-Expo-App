@@ -35,6 +35,7 @@ export default function ChatScreen() {
       setPreparing(true);
       try {
         await runtime.ensureConversation(loaded);
+        await runtime.coordinator.onChatFocus(id);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Engine not ready';
         setError(message);
@@ -47,7 +48,6 @@ export default function ChatScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadSession();
-      void runtime.coordinator.onChatFocus(id ?? '');
       return () => {
         void runtime.coordinator.onChatBlur(id ?? '');
       };
@@ -107,7 +107,9 @@ export default function ChatScreen() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : null}
-        <ChatMessageList messages={session.messages} streamingText={streamingText} />
+        <View style={styles.messages}>
+          <ChatMessageList messages={session.messages} streamingText={streamingText} />
+        </View>
         <ChatInput
           value={input}
           onChangeText={setInput}
@@ -123,6 +125,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f7f7f8',
+  },
+  messages: {
+    flex: 1,
+    minHeight: 0,
   },
   center: {
     flex: 1,

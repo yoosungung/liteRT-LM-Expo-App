@@ -30,7 +30,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 
 ## 3. Status
 
-**Phase 1 Core Chat 진행 중 (2026-06-06~).** Android 우선, mock mode default.
+**Phase 1 Core Chat 완료 (2026-06-06).** Android·iOS live E2E + SessionStore 히스토리. mock mode default in dev.
 
 | 항목 | 상태 |
 |------|------|
@@ -50,6 +50,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 1.10–1.11 | InferenceCoordinator + `warmUp`/`persistSession` skeleton |
 | Phase 1.12 | Native SHA-256 verify — **Android** `MessageDigest` · **iOS** CryptoKit ✅ |
 | Phase 1.8 | iOS Swift Engine bridge — LiteRT-LM **0.13.0** SPM + `EngineBridge` parity ✅ |
-| Phase 1 Android live E2E | **완료** — `EXPO_PUBLIC_LITERTLM_MODE=live` → E2B download → GPU inference (dev rebuild, manual 2026-06-06) |
+| Phase 1 Android live E2E | **완료** — E2B download → live 채팅 → force-stop 재시작 후 히스토리 유지 (manual 2026-06-06) |
+| Phase 1.9 iOS live E2E | **완료** — Simulator → E2B download → live 채팅 → 재시작 후 히스토리 유지 (manual 2026-06-06) |
 
-다음: iOS dev rebuild E2E (1.9), Phase 1 완료 기준 나머지(재시작 후 히스토리 등).
+다음: **Phase 2** — Function calling, Thinking Mode, E4B, `persistSession`/KV snapshot.

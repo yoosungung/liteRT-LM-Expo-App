@@ -1,7 +1,11 @@
 import type { AppStateStatus } from 'react-native';
-import type { EngineConfig, LitertLmEngine } from 'litertlm-native';
+import type { EngineConfig, InferenceLifecycle, LitertLmEngine } from 'litertlm-native';
 
 export type AppLifecycleState = 'active' | 'background' | 'inactive';
+
+function isEngineBusy(lifecycle: InferenceLifecycle): boolean {
+  return lifecycle === 'loading' || lifecycle === 'hibernating' || lifecycle === 'restoring';
+}
 
 export function mapAppState(status: AppStateStatus): AppLifecycleState {
   if (status === 'active') {
@@ -31,8 +35,11 @@ export class InferenceCoordinator {
   async onAppStateChange(state: AppLifecycleState): Promise<void> {
     if (state === 'active') {
       this.clearIdleTimer();
-      if (this.lastEngineConfig) {
-        await this.engine.warmUp(this.lastEngineConfig);
+      if (this.lastEngineConfig?.modelPath) {
+        const lifecycle = this.engine.getStatus().lifecycle;
+        if (!isEngineBusy(lifecycle)) {
+          await this.engine.warmUp(this.lastEngineConfig);
+        }
       }
       return;
     }
@@ -50,10 +57,12 @@ export class InferenceCoordinator {
       return;
     }
     const lifecycle = this.engine.getStatus().lifecycle;
-    if (lifecycle !== 'active' && lifecycle !== 'idle') {
+    if (isEngineBusy(lifecycle)) {
       return;
     }
-    await this.engine.warmUp(this.lastEngineConfig);
+    if (lifecycle !== 'active' && lifecycle !== 'idle') {
+      await this.engine.warmUp(this.lastEngineConfig);
+    }
     await this.engine.restoreSession(conversationId);
   }
 

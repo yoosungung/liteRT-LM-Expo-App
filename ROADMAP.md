@@ -50,15 +50,15 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 | 1.6 | **PromptTemplateEngine** (system instruction, extraContext) | `apps/mobile` |
 | 1.7 | GPU backend + Manifest config plugin | `litertlm-native` plugin |
 | 1.8 | iOS Swift Engine bridge (parity) | `litertlm-native` ios ✅ |
-| 1.9 | EAS dev build iOS simulator | CI/manual |
+| 1.9 | EAS dev build iOS simulator + live E2E | CI/manual ✅ |
 | 1.10 | **InferenceCoordinator** — AppState `warmUp` on active | `apps/mobile` |
 | 1.11 | **InferenceStateBridge** skeleton — `enterIdle`, lifecycle events | `litertlm-native` |
 | 1.12 | **Native SHA-256 verify** — Android `MessageDigest` · iOS CryptoKit ✅ · verify progress | `litertlm-native` |
 
 **Phase 1 완료 기준**
 
-- Android 실기기/에뮬레이터: E2B 다운로드 → GPU 채팅 → 앱 재시작 후 히스토리 유지
-- iOS Simulator: E2B CPU/GPU 채팅 (Swift API 안정성에 따라 CPU fallback 허용)
+- ~~Android 실기기/에뮬레이터: E2B 다운로드 → live 채팅 → 앱 재시작 후 히스토리 유지~~ ✅ (2026-06-06, manual; 에뮬레이터는 CPU)
+- ~~iOS Simulator: E2B live 채팅 → 앱 재시작 후 히스토리 유지~~ ✅ (2026-06-06, manual; CPU)
 
 **의도적 제외:** Tools, Skills, MCP, multimodal, E4B default.
 
@@ -166,7 +166,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 
 ## 다음 액션 (즉시)
 
-1. ~~Android dev rebuild + E2E: `EXPO_PUBLIC_LITERTLM_MODE=live` → Models download E2B → Use for chat → GPU inference~~ ✅ (2026-06-06, manual)
-2. Phase 1.9: EAS dev build iOS simulator + live E2E
-3. Mock regression: `pnpm litertlm-native mock-smoke` · `pnpm mobile start` → Chats → mock 스트리밍
-4. Android/iOS dev rebuild: `pnpm mobile android` / `pnpm mobile ios` (Kotlin/Swift bridge 변경 후)
+1. ~~Android dev rebuild + E2E: live → E2B → 채팅 → force-stop 재시작 후 히스토리~~ ✅ (2026-06-06, manual)
+2. ~~Phase 1.9: iOS Simulator live E2E → 채팅 → 재시작 후 히스토리~~ ✅ (2026-06-06, manual)
+3. Phase 2.1: Native `@Tool` skeleton + built-in tools
+4. Mock regression: `pnpm litertlm-native mock-smoke` · `pnpm mobile start` → Chats → mock 스트리밍

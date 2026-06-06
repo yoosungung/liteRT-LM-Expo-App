@@ -88,7 +88,13 @@ export class NativeEngine implements LitertLmEngine {
 
   async warmUp(config: EngineConfig): Promise<void> {
     const lifecycle = this.native.getLifecycle();
-    if (lifecycle === 'active' || lifecycle === 'idle') {
+    if (
+      lifecycle === 'active' ||
+      lifecycle === 'idle' ||
+      lifecycle === 'loading' ||
+      lifecycle === 'hibernating' ||
+      lifecycle === 'restoring'
+    ) {
       return;
     }
 

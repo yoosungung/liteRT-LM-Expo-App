@@ -11,8 +11,10 @@ import {
 } from './manifest';
 import {
   ensureModelsDirectory,
+  isModelFileReady,
   modelFile,
   modelLocalPath,
+  modelNativePath,
   verifyModelSha256,
 } from './verifyModel';
 
@@ -68,10 +70,20 @@ export class ModelManager {
   async listStates(): Promise<ModelInstallState[]> {
     const raw = await AsyncStorage.getItem(STATE_KEY);
     const saved = raw ? (JSON.parse(raw) as Record<string, ModelInstallState>) : {};
-    return MODEL_IDS.map((id) => {
-      const state = saved[id];
-      return state ?? { id, status: 'not_downloaded' as const };
+    let dirty = false;
+    const states = MODEL_IDS.map((id) => {
+      const state = saved[id] ?? { id, status: 'not_downloaded' as const };
+      const reconciled = this.reconcileState(state);
+      if (reconciled !== state) {
+        saved[id] = reconciled;
+        dirty = true;
+      }
+      return reconciled;
     });
+    if (dirty) {
+      await AsyncStorage.setItem(STATE_KEY, JSON.stringify(saved));
+    }
+    return states;
   }
 
   async getState(id: ModelId): Promise<ModelInstallState> {
@@ -81,10 +93,34 @@ export class ModelManager {
 
   async getVerifiedModelPath(id: ModelId): Promise<string | null> {
     const state = await this.getState(id);
-    if (state.status !== 'verified' || !state.localPath) {
+    if (state.status !== 'verified') {
       return null;
     }
-    return state.localPath;
+    const entry = getManifestEntry(id);
+    if (!isModelFileReady(id, entry.sizeBytes)) {
+      await this.saveState({
+        id,
+        status: 'not_downloaded',
+        verifyError: 'Model file missing. Download again.',
+      });
+      return null;
+    }
+    return modelNativePath(id);
+  }
+
+  private reconcileState(state: ModelInstallState): ModelInstallState {
+    if (state.status !== 'verified') {
+      return state;
+    }
+    const entry = getManifestEntry(state.id);
+    if (!isModelFileReady(state.id, entry.sizeBytes)) {
+      return { id: state.id, status: 'not_downloaded' };
+    }
+    const file = modelFile(state.id);
+    if (state.localPath === file.uri) {
+      return state;
+    }
+    return { ...state, localPath: file.uri };
   }
 
   async downloadModel(
