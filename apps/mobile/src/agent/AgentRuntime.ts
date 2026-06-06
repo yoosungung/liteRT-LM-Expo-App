@@ -8,6 +8,11 @@ import {
   type InferenceLifecycle,
   type LitertLmEngine,
   type Message,
+  type ToolCall,
+  type ToolCallEvent,
+  type ToolApprovalRequiredEvent,
+  type ToolDefinition,
+  type ToolRiskLevel,
 } from 'litertlm-native';
 
 import type { ModelId } from '../models/manifest';
@@ -19,14 +24,25 @@ import {
   resolvePreferredBackend,
 } from './deviceProfile';
 import { createSessionId, SessionStore, type StoredSession } from '../storage/SessionStore';
+import { AgentPreferences } from './AgentPreferences';
 import { InferenceCoordinator } from './InferenceCoordinator';
 import { createPromptTemplateEngine } from './PromptTemplateEngine';
 import type { StreamChunk } from './StreamChunk';
+import { ToolRegistry } from './tools/registry';
+import type { JsToolHandler, ToolPolicy } from './tools/types';
 
 export interface SessionOptions {
   modelId?: ModelId;
   systemInstruction?: string;
   title?: string;
+}
+
+interface ApprovalGate {
+  sessionId: string;
+  toolCall: ToolCall;
+  riskLevel: ToolRiskLevel;
+  mode: 'automatic' | 'manual';
+  resolve: (approved: boolean) => void;
 }
 
 function isEngineLifecycleReady(lifecycle: InferenceLifecycle): boolean {
@@ -39,6 +55,8 @@ export class AgentRuntime {
   readonly sessionStore = new SessionStore();
   readonly modelManager = new ModelManager();
   readonly modelPreferences = new ModelPreferences();
+  readonly agentPreferences = new AgentPreferences();
+  readonly toolRegistry = new ToolRegistry();
   readonly coordinator: InferenceCoordinator;
 
   private engine: LitertLmEngine;
@@ -52,6 +70,9 @@ export class AgentRuntime {
   private loadModelPromise: Promise<{ backend: Backend }> | null = null;
   private loadingModelId: ModelId | null = null;
   private ensureConversationInflight = new Map<string, Promise<void>>();
+  private approvalGates = new Map<string, ApprovalGate>();
+  private streamChunkQueue: StreamChunk[] = [];
+  private wakeStream: (() => void) | null = null;
 
   constructor(engine?: LitertLmEngine) {
     this.engineConfig = defaultMockConfig();
@@ -78,6 +99,44 @@ export class AgentRuntime {
 
   getEngine(): LitertLmEngine {
     return this.engine;
+  }
+
+  registerTool(
+    handler: JsToolHandler,
+    definition: ToolDefinition,
+    policy?: ToolPolicy,
+  ): void {
+    this.toolRegistry.register(handler, definition, policy);
+  }
+
+  async respondToToolApproval(
+    sessionId: string,
+    toolCallId: string,
+    approved: boolean,
+    reason?: string,
+  ): Promise<void> {
+    const gate = this.approvalGates.get(toolCallId);
+    if (!gate || gate.sessionId !== sessionId) {
+      return;
+    }
+
+    if (gate.mode === 'manual') {
+      gate.resolve(approved);
+      this.approvalGates.delete(toolCallId);
+      return;
+    }
+
+    if (!approved) {
+      await this.engine.rejectToolCall(sessionId, toolCallId, reason ?? 'User denied');
+      gate.resolve(false);
+      this.approvalGates.delete(toolCallId);
+      return;
+    }
+
+    await this.engine.approveToolCall(sessionId, toolCallId, true);
+    await this.executeAndSubmitToolResult(sessionId, gate.toolCall);
+    gate.resolve(true);
+    this.approvalGates.delete(toolCallId);
   }
 
   async initialize(): Promise<void> {
@@ -148,6 +207,18 @@ export class AgentRuntime {
     this.initialized = true;
   }
 
+  private async buildConversationConfig(session: StoredSession) {
+    const automaticToolCalling = await this.agentPreferences.getAutomaticToolCalling();
+    const sampler = await this.agentPreferences.getSampler();
+    return {
+      conversationId: session.id,
+      systemInstruction: this.promptEngine.buildSystemInstruction(session),
+      tools: this.toolRegistry.listDefinitions(),
+      automaticToolCalling,
+      sampler,
+    };
+  }
+
   async createSession(options: SessionOptions = {}): Promise<StoredSession> {
     const modelId =
       options.modelId ??
@@ -168,10 +239,7 @@ export class AgentRuntime {
     };
 
     await this.sessionStore.saveSession(session);
-    await this.engine.createConversation({
-      conversationId: id,
-      systemInstruction: this.promptEngine.buildSystemInstruction(session),
-    });
+    await this.engine.createConversation(await this.buildConversationConfig(session));
 
     return session;
   }
@@ -206,10 +274,7 @@ export class AgentRuntime {
       );
     }
 
-    await this.engine.createConversation({
-      conversationId: session.id,
-      systemInstruction: this.promptEngine.buildSystemInstruction(session),
-    });
+    await this.engine.createConversation(await this.buildConversationConfig(session));
   }
 
   async ensureModelLoaded(modelId: ModelId): Promise<void> {
@@ -309,20 +374,91 @@ export class AgentRuntime {
 
     let assistantText = '';
     const nativeTurn = this.promptEngine.toNativeUserTurn(trimmed, session.messages);
-    const extraContext = this.promptEngine.buildExtraContext({ thinking: false });
+    const thinkingEnabled = await this.agentPreferences.getThinkingEnabled();
+    const extraContext = this.promptEngine.buildExtraContext({ thinking: thinkingEnabled });
 
-    try {
-      for await (const chunk of this.engine.sendMessage(
-        sessionId,
-        nativeTurn,
-        extraContext,
-      )) {
-        if (abort.signal.aborted) {
-          yield { type: 'error', message: 'Generation aborted' };
+    this.streamChunkQueue = [];
+    const streamState = { done: false, error: null as Error | null };
+
+    const pushChunk = (chunk: StreamChunk) => {
+      this.streamChunkQueue.push(chunk);
+      this.wakeStream?.();
+    };
+
+    const waitForChunk = () =>
+      new Promise<void>((resolve) => {
+        if (this.streamChunkQueue.length > 0 || streamState.done || streamState.error) {
+          resolve();
           return;
         }
-        assistantText += chunk;
-        yield { type: 'token', text: chunk };
+        this.wakeStream = resolve;
+      });
+
+    const approvalSub = this.engine.addListener(
+      'onToolApprovalRequired',
+      (event: ToolApprovalRequiredEvent) => {
+        if (event.conversationId !== sessionId) {
+          return;
+        }
+        this.registerApprovalGate(sessionId, event.toolCall, event.riskLevel, 'automatic');
+        pushChunk({
+          type: 'tool_approval_required',
+          toolCall: event.toolCall,
+          riskLevel: event.riskLevel,
+        });
+      },
+    );
+
+    const toolSub = this.engine.addListener('onToolCall', (event: ToolCallEvent) => {
+      if (event.conversationId !== sessionId) {
+        return;
+      }
+      pushChunk({ type: 'tool_call', toolCall: event.toolCall });
+      void this.handleManualToolCall(sessionId, event.toolCall, pushChunk);
+    });
+
+    const streamTask = (async () => {
+      try {
+        for await (const chunk of this.engine.sendMessage(
+          sessionId,
+          nativeTurn,
+          extraContext,
+        )) {
+          if (abort.signal.aborted) {
+            streamState.error = new Error('Generation aborted');
+            break;
+          }
+          pushChunk({ type: 'token', text: chunk });
+        }
+      } catch (error) {
+        streamState.error = error instanceof Error ? error : new Error(String(error));
+      } finally {
+        streamState.done = true;
+        this.wakeStream?.();
+      }
+    })();
+
+    try {
+      while (!streamState.done || this.streamChunkQueue.length > 0) {
+        await waitForChunk();
+        if (streamState.error) {
+          yield { type: 'error', message: streamState.error.message };
+          return;
+        }
+        while (this.streamChunkQueue.length > 0) {
+          const chunk = this.streamChunkQueue.shift()!;
+          if (chunk.type === 'token') {
+            assistantText += chunk.text;
+          }
+          yield chunk;
+        }
+      }
+
+      await streamTask;
+
+      if (abort.signal.aborted) {
+        yield { type: 'error', message: 'Generation aborted' };
+        return;
       }
 
       const assistantMessage: Message = {
@@ -337,8 +473,84 @@ export class AgentRuntime {
       const message = error instanceof Error ? error.message : 'Unknown error';
       yield { type: 'error', message };
     } finally {
+      approvalSub.remove();
+      toolSub.remove();
+      this.streamChunkQueue = [];
+      this.wakeStream = null;
       this.abortControllers.delete(sessionId);
     }
+  }
+
+  private registerApprovalGate(
+    sessionId: string,
+    toolCall: ToolCall,
+    riskLevel: ToolRiskLevel,
+    mode: ApprovalGate['mode'],
+  ): void {
+    if (this.approvalGates.has(toolCall.id)) {
+      return;
+    }
+    this.approvalGates.set(toolCall.id, {
+      sessionId,
+      toolCall,
+      riskLevel,
+      mode,
+      resolve: () => {},
+    });
+  }
+
+  private async handleManualToolCall(
+    sessionId: string,
+    toolCall: ToolCall,
+    pushChunk: (chunk: StreamChunk) => void,
+  ): Promise<void> {
+    const registered = this.toolRegistry.get(toolCall.name);
+    if (!registered) {
+      await this.engine.rejectToolCall(sessionId, toolCall.id, 'Unknown tool');
+      return;
+    }
+
+    if (registered.policy.requiresApproval) {
+      const approved = await new Promise<boolean>((resolve) => {
+        this.approvalGates.set(toolCall.id, {
+          sessionId,
+          toolCall,
+          riskLevel: registered.policy.riskLevel ?? 'write',
+          mode: 'manual',
+          resolve,
+        });
+        pushChunk({
+          type: 'tool_approval_required',
+          toolCall,
+          riskLevel: registered.policy.riskLevel ?? 'write',
+        });
+      });
+      if (!approved) {
+        await this.engine.rejectToolCall(sessionId, toolCall.id, 'User denied');
+        return;
+      }
+    }
+
+    await this.executeAndSubmitToolResult(sessionId, toolCall);
+  }
+
+  private async executeAndSubmitToolResult(sessionId: string, toolCall: ToolCall): Promise<void> {
+    const registered = this.toolRegistry.get(toolCall.name);
+    if (!registered) {
+      await this.engine.rejectToolCall(sessionId, toolCall.id, 'Unknown tool');
+      return;
+    }
+
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(toolCall.argumentsJson) as Record<string, unknown>;
+    } catch {
+      await this.engine.rejectToolCall(sessionId, toolCall.id, 'Invalid tool arguments');
+      return;
+    }
+
+    const result = await this.toolRegistry.execute(toolCall.name, args);
+    await this.engine.submitToolResult(sessionId, toolCall.id, JSON.stringify(result));
   }
 
   abortGeneration(sessionId: string): void {

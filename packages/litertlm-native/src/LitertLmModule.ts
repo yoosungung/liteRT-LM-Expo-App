@@ -34,6 +34,9 @@ export interface LitertLmEngine {
     text: string,
     extraContext?: Record<string, unknown>,
   ): Promise<Message>;
+  approveToolCall(conversationId: string, toolCallId: string, approved: boolean): Promise<void>;
+  rejectToolCall(conversationId: string, toolCallId: string, reason?: string): Promise<void>;
+  submitToolResult(conversationId: string, toolCallId: string, resultJson: string): Promise<void>;
   addListener<T extends LitertLmEventName>(
     eventName: T,
     listener: LitertLmEventListener<T>,

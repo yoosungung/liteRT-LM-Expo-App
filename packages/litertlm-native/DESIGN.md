@@ -184,7 +184,13 @@ Implementation note: Expo Modules [`AsyncIterator`](https://docs.expo.dev/module
 
 ---
 
-## 6. Native Tools (Phase 2)
+## 6. Native Tools (Phase 2 — S1/S2)
+
+구현 계획: [.references/phase2-plan.md](../../.references/phase2-plan.md) §2.1–2.3
+
+**준비 (2026-06-06):** `LitertLm.types.ts` — `ToolDefinition`, `ToolCall`, `onToolApprovalRequired`; `approveToolCall`/`rejectToolCall` 스텁 (NOT_IMPLEMENTED).
+
+**다음:** Kotlin `DeviceToolSet` + iOS Swift parity.
 
 ```kotlin
 class DeviceToolSet(private val context: Context) : ToolSet {
@@ -247,6 +253,7 @@ pnpm litertlm-native typecheck
 
 # Mock streaming smoke (no native module)
 pnpm litertlm-native mock-smoke
+pnpm litertlm-native mock-tool-smoke
 
 # Native module is autolinked from apps/mobile via workspace:*
 # Rebuild dev client after Kotlin/Swift changes:

@@ -66,24 +66,38 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 
 ## Phase 2 — Agent & Gemma 4 완성 (3–4주)
 
-**목표:** Function calling, Thinking Mode, E4B, sampler UI.
+**목표:** Function calling, Thinking Mode, E4B, sampler UI, KV persist/hibernate UX.
 
-| # | 작업 |
-|---|------|
-| 2.1 | Native `@Tool` — 2–3개 built-in (time, device info, open URL) |
-| 2.2 | `automaticToolCalling` + JS manual mode 토글 |
-| 2.3 | **Tool approval UI** + `onToolApprovalRequired` / `approveToolCall` |
-| 2.4 | Thinking Mode UI (`enable_thinking`) |
-| 2.5 | E4B model manifest + 기기 RAM gate |
-| 2.6 | Sampler settings (temperature, top-k) — Prompt Lab lite |
-| 2.7 | Generation abort, 백그라운드 처리 |
-| 2.8 | Benchmark 화면 (prefill/decode rough metrics) |
-| 2.9 | **`persistSession` / `restoreSession`** + `.kvsnapshot` | `litertlm-native` |
-| 2.10 | **Smart Eviction** — Android `onTrimMemory`, iOS memory warning | `litertlm-native` |
-| 2.11 | **Snapshot UI** + loading skeleton (`restoring`) | `apps/mobile` |
-| 2.12 | Background **Idle → Hibernate** timer (`T_idle`) | InferenceCoordinator |
+**구현 계획:** [.references/phase2-plan.md](./.references/phase2-plan.md)  
+**전제:** Phase 1 완료 ✅ · Mock-first 개발 (`EXPO_PUBLIC_LITERTLM_MODE=mock`)
 
-**레퍼런스:** [.references/gallery-function-calling.md](./.references/gallery-function-calling.md)
+### Kickoff 체크리스트
+
+- [x] Phase 2 계획 문서 (`phase2-plan.md`)
+- [x] TypeScript 계약 확장 — `ToolDefinition`, `ToolCall`, approval 이벤트 ([ARCHITECTURE §2.3](./ARCHITECTURE.md))
+- [x] JS tool registry·built-in 스켈레톤 (`apps/mobile/src/agent/tools/`)
+- [x] UI 스켈레톤 — `ThinkingBlock`, `ToolApprovalSheet`
+- [x] S1 Mock tools + approval UI + Settings toggle (`mock-tool-smoke`)
+- [ ] 2.1 Native `@Tool` Kotlin/Swift wiring
+
+### 작업표
+
+| # | 작업 | 컴포넌트 | Wave |
+|---|------|----------|------|
+| 2.1 | Native `@Tool` — built-in 3개 (time, device info, open URL) | `litertlm-native` | 1 |
+| 2.2 | `automaticToolCalling` + JS manual mode 토글 | bridge + Settings | 1 |
+| 2.3 | **Tool approval UI** + `onToolApprovalRequired` / `approveToolCall` | `apps/mobile` | 2 |
+| 2.4 | Thinking Mode UI (`enable_thinking`) | `apps/mobile` | 2 |
+| 2.5 | E4B manifest + **기기 RAM gate** (`deviceRam.ts`) | `apps/mobile` | 2 |
+| 2.6 | Sampler settings (temperature, top-k) — Prompt Lab lite | Settings | 1 |
+| 2.7 | Generation abort, 백그라운드 처리 | Coordinator + native | 1 |
+| 2.8 | Benchmark 화면 (prefill/decode rough metrics) | `apps/mobile` | 2 |
+| 2.9 | **`persistSession` / `restoreSession`** + `.kvsnapshot` | `litertlm-native` | 3 |
+| 2.10 | **Smart Eviction** — `onTrimMemory`, memory warning | `litertlm-native` | 3 |
+| 2.11 | **Snapshot UI** + loading skeleton (`restoring`) | `apps/mobile` | 3 |
+| 2.12 | Background **Idle → Hibernate** timer (`T_idle`) | InferenceCoordinator | 3 |
+
+**레퍼런스:** [.references/gallery-function-calling.md](./.references/gallery-function-calling.md) · [.references/phase0-kv-persist-spike.md](./.references/phase0-kv-persist-spike.md)
 
 ---
 
@@ -166,7 +180,9 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 
 ## 다음 액션 (즉시)
 
-1. ~~Android dev rebuild + E2E: live → E2B → 채팅 → force-stop 재시작 후 히스토리~~ ✅ (2026-06-06, manual)
-2. ~~Phase 1.9: iOS Simulator live E2E → 채팅 → 재시작 후 히스토리~~ ✅ (2026-06-06, manual)
-3. Phase 2.1: Native `@Tool` skeleton + built-in tools
-4. Mock regression: `pnpm litertlm-native mock-smoke` · `pnpm mobile start` → Chats → mock 스트리밍
+1. ~~Phase 1 Android/iOS live E2E~~ ✅ (2026-06-06)
+2. ~~Phase 2 kickoff — 계약·스켈레톤·`phase2-plan.md`~~ ✅ (2026-06-06)
+3. ~~Phase 2 S1: Mock tools + approval UI + Settings toggle~~ ✅
+4. **Phase 2.1 native:** Kotlin `@Tool` + iOS parity
+5. **Phase 2.4:** Thinking 토글 + `ThinkingBlock`
+6. Mock regression: `pnpm litertlm-native mock-tool-smoke` · `pnpm mobile start`

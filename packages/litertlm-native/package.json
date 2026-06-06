@@ -6,7 +6,8 @@
   "types": "src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "mock-smoke": "npx tsx scripts/mock-smoke.ts"
+    "mock-smoke": "npx tsx scripts/mock-smoke.ts",
+    "mock-tool-smoke": "npx tsx scripts/mock-tool-smoke.ts"
   },
   "keywords": ["expo", "litert-lm", "gemma"],
   "license": "MIT",

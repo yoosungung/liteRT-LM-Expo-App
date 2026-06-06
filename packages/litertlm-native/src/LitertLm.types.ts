@@ -66,10 +66,27 @@ export interface SamplerConfig {
   topP?: number;
 }
 
+export type ToolRiskLevel = 'read' | 'write' | 'destructive';
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  parametersJsonSchema: object;
+  riskLevel?: ToolRiskLevel;
+  requiresApproval?: boolean;
+}
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  argumentsJson: string;
+}
+
 export interface ConversationConfig {
   conversationId: string;
   systemInstruction?: string;
   sampler?: SamplerConfig;
+  tools?: ToolDefinition[];
   automaticToolCalling?: boolean;
 }
 
@@ -78,6 +95,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'tool';
   content: string;
   thinking?: string;
+  toolCalls?: ToolCall[];
   timestamp: number;
 }
 
@@ -100,11 +118,24 @@ export interface LitertLmError {
   message: string;
 }
 
+export interface ToolCallEvent {
+  conversationId: string;
+  toolCall: ToolCall;
+}
+
+export interface ToolApprovalRequiredEvent {
+  conversationId: string;
+  toolCall: ToolCall;
+  riskLevel: ToolRiskLevel;
+}
+
 export type LitertLmEventMap = {
   onEngineStatusChanged: EngineStatus;
   onInferenceLifecycleChanged: InferenceLifecycleEvent;
   onStreamDelta: StreamDeltaEvent;
   onMessageComplete: { conversationId: string; message: Message };
+  onToolCall: ToolCallEvent;
+  onToolApprovalRequired: ToolApprovalRequiredEvent;
   onError: LitertLmError;
 };
 

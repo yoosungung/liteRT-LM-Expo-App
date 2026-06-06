@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -9,10 +9,18 @@ import {
 } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 
+import type { ToolCall, ToolRiskLevel } from 'litertlm-native';
+
 import { ChatInput } from '../../../src/components/ChatInput';
 import { ChatMessageList } from '../../../src/components/ChatMessageList';
+import { ToolApprovalSheet } from '../../../src/components/ToolApprovalSheet';
 import { useAgentRuntime } from '../../../src/context/AgentContext';
 import type { StoredSession } from '../../../src/storage/SessionStore';
+
+interface PendingApproval {
+  toolCall: ToolCall;
+  riskLevel: ToolRiskLevel;
+}
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,6 +31,8 @@ export default function ChatScreen() {
   const [busy, setBusy] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const approvalResolvers = useRef(new Map<string, () => void>());
 
   const loadSession = useCallback(async () => {
     if (!id) {
@@ -54,6 +64,20 @@ export default function ChatScreen() {
     }, [id, loadSession, runtime]),
   );
 
+  const waitForApprovalUi = (toolCall: ToolCall, riskLevel: ToolRiskLevel) =>
+    new Promise<void>((resolve) => {
+      approvalResolvers.current.set(toolCall.id, resolve);
+      setPendingApproval({ toolCall, riskLevel });
+    });
+
+  const clearApprovalUi = (toolCallId: string) => {
+    approvalResolvers.current.get(toolCallId)?.();
+    approvalResolvers.current.delete(toolCallId);
+    setPendingApproval((current) =>
+      current?.toolCall.id === toolCallId ? null : current,
+    );
+  };
+
   const send = async () => {
     if (!id || !input.trim() || busy) {
       return;
@@ -67,6 +91,8 @@ export default function ChatScreen() {
       for await (const chunk of runtime.sendUserMessage(id, input)) {
         if (chunk.type === 'token') {
           setStreamingText((prev) => prev + chunk.text);
+        } else if (chunk.type === 'tool_approval_required') {
+          await waitForApprovalUi(chunk.toolCall, chunk.riskLevel);
         } else if (chunk.type === 'error') {
           setError(chunk.message);
         } else if (chunk.type === 'done') {
@@ -78,6 +104,24 @@ export default function ChatScreen() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const onApproveTool = async () => {
+    if (!id || !pendingApproval) {
+      return;
+    }
+    const { toolCall } = pendingApproval;
+    await runtime.respondToToolApproval(id, toolCall.id, true);
+    clearApprovalUi(toolCall.id);
+  };
+
+  const onDenyTool = async () => {
+    if (!id || !pendingApproval) {
+      return;
+    }
+    const { toolCall } = pendingApproval;
+    await runtime.respondToToolApproval(id, toolCall.id, false, 'User denied');
+    clearApprovalUi(toolCall.id);
   };
 
   if (!session) {
@@ -114,9 +158,16 @@ export default function ChatScreen() {
           value={input}
           onChangeText={setInput}
           onSend={send}
-          disabled={busy || preparing}
+          disabled={busy || preparing || pendingApproval !== null}
         />
       </KeyboardAvoidingView>
+      <ToolApprovalSheet
+        visible={pendingApproval !== null}
+        toolCall={pendingApproval?.toolCall ?? null}
+        riskLevel={pendingApproval?.riskLevel ?? 'write'}
+        onApprove={() => void onApproveTool()}
+        onDeny={() => void onDenyTool()}
+      />
     </>
   );
 }

@@ -15,6 +15,8 @@ import type {
   PersistResult,
   RestoreResult,
   StreamDeltaEvent,
+  ToolApprovalRequiredEvent,
+  ToolCallEvent,
 } from './LitertLm.types';
 import type { LitertLmEngine } from './LitertLmModule';
 
@@ -23,6 +25,8 @@ type NativeLitertLmEvents = {
   onInferenceLifecycleChanged: (event: InferenceLifecycleEvent) => void;
   onStreamDelta: (event: StreamDeltaEvent) => void;
   onMessageComplete: (event: { conversationId: string; message: Message }) => void;
+  onToolCall: (event: ToolCallEvent) => void;
+  onToolApprovalRequired: (event: ToolApprovalRequiredEvent) => void;
   onError: (event: LitertLmError) => void;
 };
 
@@ -244,6 +248,39 @@ export class NativeEngine implements LitertLmEngine {
       content,
       timestamp: Date.now(),
     };
+  }
+
+  async approveToolCall(
+    conversationId: string,
+    toolCallId: string,
+    approved: boolean,
+  ): Promise<void> {
+    void conversationId;
+    void toolCallId;
+    void approved;
+    throw new Error('NOT_IMPLEMENTED: approveToolCall (Phase 2.3)');
+  }
+
+  async rejectToolCall(
+    conversationId: string,
+    toolCallId: string,
+    reason?: string,
+  ): Promise<void> {
+    void conversationId;
+    void toolCallId;
+    void reason;
+    throw new Error('NOT_IMPLEMENTED: rejectToolCall (Phase 2.3)');
+  }
+
+  async submitToolResult(
+    conversationId: string,
+    toolCallId: string,
+    resultJson: string,
+  ): Promise<void> {
+    void conversationId;
+    void toolCallId;
+    void resultJson;
+    throw new Error('NOT_IMPLEMENTED: submitToolResult (Phase 2.2)');
   }
 
   addListener<T extends LitertLmEventName>(

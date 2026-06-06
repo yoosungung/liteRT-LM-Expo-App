@@ -11,9 +11,24 @@ import type {
   PersistResult,
   RestoreResult,
   StreamDeltaKind,
+  ToolCall,
 } from '../LitertLm.types';
 import type { LitertLmEngine } from '../LitertLmModule';
+import {
+  createToolCall,
+  detectMockTool,
+  mockReadToolResult,
+  type MockToolTrigger,
+} from './mockToolTriggers';
 import { TokenBatcher } from './TokenBatcher';
+
+interface PendingToolFlow {
+  conversationId: string;
+  toolCall: ToolCall;
+  trigger: MockToolTrigger;
+  resolveApproval?: (approved: boolean) => void;
+  resolveResult?: (resultJson: string | null) => void;
+}
 
 const DEFAULT_CANNED = [
   'Hello! I am running in mock mode without a LiteRT-LM model file.',
@@ -32,6 +47,7 @@ export class MockEngine implements LitertLmEngine {
     persistKvOnHibernate: true,
   };
   private responseIndex = 0;
+  private pendingTools = new Map<string, PendingToolFlow>();
 
   async initialize(config: EngineConfig): Promise<void> {
     await this.transition('loading');
@@ -118,21 +134,73 @@ export class MockEngine implements LitertLmEngine {
   ): AsyncIterable<string> {
     void extraContext;
     this.ensureActive();
-    if (!this.conversations.has(conversationId)) {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
       throw new Error(`Conversation not found: ${conversationId}`);
     }
 
     const mock = this.config?.mock ?? {};
-    const response = this.pickResponse(text, mock);
     const batchConfig = this.config?.streamBatch ?? {};
     const tokensPerSecond = mock.tokensPerSecond ?? 30;
+    const automatic = conversation.automaticToolCalling !== false;
+    const trigger = detectMockTool(text);
 
     if (mock.simulateThinking) {
       const thinking = 'Let me think about that for a moment…';
-      for await (const chunk of this.streamWithBatcher(thinking, batchConfig, tokensPerSecond, 'thinking')) {
+      for await (const chunk of this.streamWithBatcher(
+        thinking,
+        batchConfig,
+        tokensPerSecond,
+        'thinking',
+      )) {
         yield chunk;
       }
     }
+
+    let toolResult: Record<string, unknown> | null = null;
+    let toolDenied = false;
+
+    if (trigger) {
+      const toolCall = createToolCall(conversationId, trigger);
+
+      if (!automatic) {
+        this.emit('onToolCall', { conversationId, toolCall });
+        const resultJson = await this.waitForToolResult(toolCall.id, conversationId, trigger, toolCall);
+        if (resultJson === null) {
+          toolDenied = true;
+        } else {
+          try {
+            toolResult = JSON.parse(resultJson) as Record<string, unknown>;
+          } catch {
+            toolResult = { raw: resultJson };
+          }
+        }
+      } else if (trigger.requiresApproval) {
+        const approved = await this.waitForToolApproval(conversationId, toolCall, trigger);
+        if (!approved) {
+          toolDenied = true;
+        } else {
+          const resultJson = await this.waitForToolResult(toolCall.id, conversationId, trigger, toolCall);
+          if (resultJson === null) {
+            toolDenied = true;
+          } else {
+            try {
+              toolResult = JSON.parse(resultJson) as Record<string, unknown>;
+            } catch {
+              toolResult = { raw: resultJson };
+            }
+          }
+        }
+      } else {
+        toolResult = mockReadToolResult(trigger.name);
+      }
+    }
+
+    const response = toolDenied
+      ? 'The tool call was denied by the user.'
+      : toolResult
+        ? this.formatToolResponse(text, toolResult, trigger!)
+        : this.pickResponse(text, mock);
 
     let full = '';
     for await (const chunk of this.streamWithBatcher(response, batchConfig, tokensPerSecond, 'token')) {
@@ -144,6 +212,7 @@ export class MockEngine implements LitertLmEngine {
       id: `${conversationId}-${Date.now()}`,
       role: 'assistant',
       content: full,
+      toolCalls: trigger ? [createToolCall(conversationId, trigger)] : undefined,
       timestamp: Date.now(),
     };
     this.emit('onMessageComplete', { conversationId, message });
@@ -164,6 +233,44 @@ export class MockEngine implements LitertLmEngine {
       content,
       timestamp: Date.now(),
     };
+  }
+
+  async approveToolCall(
+    conversationId: string,
+    toolCallId: string,
+    approved: boolean,
+  ): Promise<void> {
+    const pending = this.pendingTools.get(toolCallId);
+    if (!pending || pending.conversationId !== conversationId) {
+      return;
+    }
+    pending.resolveApproval?.(approved);
+    if (!approved) {
+      pending.resolveResult?.(null);
+      this.pendingTools.delete(toolCallId);
+    }
+  }
+
+  async rejectToolCall(
+    conversationId: string,
+    toolCallId: string,
+    reason?: string,
+  ): Promise<void> {
+    void reason;
+    await this.approveToolCall(conversationId, toolCallId, false);
+  }
+
+  async submitToolResult(
+    conversationId: string,
+    toolCallId: string,
+    resultJson: string,
+  ): Promise<void> {
+    const pending = this.pendingTools.get(toolCallId);
+    if (!pending || pending.conversationId !== conversationId) {
+      return;
+    }
+    pending.resolveResult?.(resultJson);
+    this.pendingTools.delete(toolCallId);
   }
 
   addListener<T extends LitertLmEventName>(
@@ -211,6 +318,52 @@ export class MockEngine implements LitertLmEngine {
     while (pending.length > 0) {
       yield pending.shift()!;
     }
+  }
+
+  private waitForToolApproval(
+    conversationId: string,
+    toolCall: ToolCall,
+    trigger: MockToolTrigger,
+  ): Promise<boolean> {
+    return new Promise((resolveApproval) => {
+      this.pendingTools.set(toolCall.id, {
+        conversationId,
+        toolCall,
+        trigger,
+        resolveApproval,
+      });
+      this.emit('onToolApprovalRequired', {
+        conversationId,
+        toolCall,
+        riskLevel: trigger.riskLevel,
+      });
+    });
+  }
+
+  private waitForToolResult(
+    toolCallId: string,
+    conversationId: string,
+    trigger: MockToolTrigger,
+    toolCall: ToolCall,
+  ): Promise<string | null> {
+    return new Promise((resolveResult) => {
+      const existing = this.pendingTools.get(toolCallId);
+      this.pendingTools.set(toolCallId, {
+        conversationId,
+        toolCall,
+        trigger,
+        resolveApproval: existing?.resolveApproval,
+        resolveResult,
+      });
+    });
+  }
+
+  private formatToolResponse(
+    text: string,
+    result: Record<string, unknown>,
+    trigger: MockToolTrigger,
+  ): string {
+    return `Tool \`${trigger.name}\` completed.\n\nResult: ${JSON.stringify(result, null, 2)}\n\n(You said: "${text.trim()}")`;
   }
 
   private pickResponse(text: string, mock: MockEngineConfig): string {

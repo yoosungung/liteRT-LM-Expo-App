@@ -171,6 +171,26 @@ idle → sending → streaming → (tool_approval_pending) → (tool_executing) 
 
 ---
 
+## 11. Phase 2 (진행 중)
+
+구현 계획: [.references/phase2-plan.md](../../.references/phase2-plan.md)
+
+| 작업 | 경로 | 상태 |
+|------|------|------|
+| Tool registry | `src/agent/tools/` | ✅ S1 — builtins + registry |
+| Agent preferences | `src/agent/AgentPreferences.ts` | ✅ auto-tools toggle (Settings) |
+| Settings | `app/(tabs)/settings.tsx` | ✅ automaticToolCalling |
+| Tool approval | `src/components/ToolApprovalSheet.tsx` | ✅ Chat wiring |
+| RAM gate | `src/models/deviceRam.ts` | E4B `minRamMb` |
+| Thinking UI | `src/components/ThinkingBlock.tsx` | 컴포넌트 |
+| Tool approval | `src/components/ToolApprovalSheet.tsx` | 컴포넌트 |
+| Settings / Benchmark | `app/(tabs)/settings.tsx`, `benchmark.tsx` | Phase 2.6/2.8 |
+| Chat 통합 | `app/(tabs)/chat/[id].tsx` | thinking·approval·abort wiring |
+
+Mock-first: registry + approval sheet E2E 후 native `@Tool` parity.
+
+---
+
 ## 10. 테스트 전략 (구현 시)
 
 - Unit: AgentRuntime + **PromptTemplateEngine**; ModelManager verify ( corrupt file )
