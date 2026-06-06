@@ -307,16 +307,20 @@ Phase 3 작업(예: `SKILL.md` parser)은 ROADMAP 항목마다 **테스트 파�
 
 ## 성공 지표 (Phase 1–2)
 
-- [ ] Cold start → first token < 3s (E2B GPU, 플래그십 Android)
-- [ ] 10-turn conversation without crash
-- [x] Tool call round-trip < 5s (simple native tool) — `getCurrentTime` live ✅ (manual)
-- [ ] Zero network during inference (packet capture spot check)
-- [ ] Mock mode: chat UI full flow without model load — **T4 AgentRuntime + T7 Maestro**
-- [ ] Download corrupt file → verify fails → Engine never called — **T2 `verifyModel` + T3 ModelManager**
-- [ ] E2B post-download SHA-256 verify: native path (1.12) — 실기기에서 download 대비 체감 지연 없음 (에뮬레이터 JS interim은 제외)
-- [ ] Stream UI: no jank at 50+ tok/s decode (batched deltas)
-- [ ] Background → Idle; memory warning → Hibernated (no crash) — **T3 InferenceCoordinator + T8 native**
-- [ ] Restore from KV snapshot: 10-turn session TTFT < restore-from-scratch prefill case — **T4 + manual**
+| # | 지표 | 상태 | 검증 근거 |
+|---|------|------|-----------|
+| 1 | Cold start → first token < 3s (E2B GPU, 플래그십 Android) | ⏳ 미검증 | TTFT 벤치마크·실기기 GPU 측정 없음 |
+| 2 | 10-turn conversation without crash | ⏳ 미검증 | dedicated stress manual 없음 (Phase 1 live E2E는 단기 turn) |
+| 3 | Tool call round-trip < 5s (simple native tool) | ✅ 완료 | `getCurrentTime` live E2E (manual 2026-06-06) |
+| 4 | Zero network during inference (packet capture) | ⏳ 미검증 | packet capture spot check 없음 |
+| 5 | Mock mode: chat UI full flow without model load | 🔶 부분 | **T4** AgentRuntime mock 1-turn·tools·multimodal ✅ · **T7** Maestro ⏳ |
+| 6 | Download corrupt file → verify fails → Engine never called | ✅ 완료 | **T2** `verifyModel.test.ts` · **T3** `ModelManager.test.ts` (§1.8) |
+| 7 | E2B post-download SHA-256 verify: native path (1.12) | 🔶 부분 | native verify 구현 ✅ · 실기기 download UX manual ⏳ (에뮬 CPU/JS interim) |
+| 8 | Stream UI: no jank at 50+ tok/s decode (batched deltas) | ⏳ 미검증 | §1.7 TokenBatcher 단위 ✅ · UI 프레임 측정 없음 |
+| 9 | Background → Idle; memory warning → Hibernated (no crash) | 🔶 부분 | **T3** `InferenceCoordinator.test.ts` ✅ · **S4** hibernate/restore live iOS+Android ✅ · **T8** native ⏳ |
+| 10 | Restore from KV snapshot: 10-turn TTFT < restore-from-scratch | 🔶 부분 | **S4** hibernate/restore live iOS+Android ✅ · 10-turn TTFT 벤치마크 ⏳ · **T4** MessageReplayer 단위 ✅ |
+
+**범례:** ✅ 완료 · 🔶 부분(자동 또는 manual 일부) · ⏳ 미검증
 
 ---
 
