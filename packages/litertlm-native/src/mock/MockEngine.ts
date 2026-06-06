@@ -163,6 +163,7 @@ export class MockEngine implements LitertLmEngine {
     text: string,
     extraContext?: Record<string, unknown>,
     imagePath?: string,
+    audioPath?: string,
   ): AsyncIterable<StreamPart> {
     this.ensureActive();
     try {
@@ -202,8 +203,15 @@ export class MockEngine implements LitertLmEngine {
       const toolCall = createToolCall(conversationId, trigger);
 
       if (!automatic) {
+        const resultPromise = this.waitForToolResult(
+          toolCall.id,
+          conversationId,
+          trigger,
+          toolCall,
+        );
         this.emit('onToolCall', { conversationId, toolCall });
-        const resultJson = await this.waitForToolResult(toolCall.id, conversationId, trigger, toolCall);
+        await Promise.resolve();
+        const resultJson = await resultPromise;
         if (resultJson === null) {
           toolDenied = true;
         } else {
@@ -229,14 +237,16 @@ export class MockEngine implements LitertLmEngine {
             }
           }
         }
-      } else if (trigger.name === 'run_js') {
-        this.emit('onToolCall', { conversationId, toolCall });
-        const resultJson = await this.waitForToolResult(
+      } else if (trigger.name === 'run_js' || trigger.name.startsWith('mcp:')) {
+        const resultPromise = this.waitForToolResult(
           toolCall.id,
           conversationId,
           trigger,
           toolCall,
         );
+        this.emit('onToolCall', { conversationId, toolCall });
+        await Promise.resolve();
+        const resultJson = await resultPromise;
         if (resultJson === null) {
           toolDenied = true;
         } else {
@@ -255,9 +265,11 @@ export class MockEngine implements LitertLmEngine {
       ? 'The tool call was denied by the user.'
       : toolResult
         ? this.formatToolResponse(text, toolResult, trigger!)
-        : imagePath
-          ? `I see the image you shared. ${this.pickResponse(text, mock)}`
-          : this.pickResponse(text, mock);
+        : audioPath
+          ? `I heard the audio clip you shared. ${this.pickResponse(text, mock)}`
+          : imagePath
+            ? `I see the image you shared. ${this.pickResponse(text, mock)}`
+            : this.pickResponse(text, mock);
 
     let full = '';
     for await (const chunk of this.streamWithBatcher(response, batchConfig, tokensPerSecond, 'token', conversationId)) {
@@ -286,9 +298,16 @@ export class MockEngine implements LitertLmEngine {
     text: string,
     extraContext?: Record<string, unknown>,
     imagePath?: string,
+    audioPath?: string,
   ): Promise<Message> {
     let content = '';
-    for await (const chunk of this.sendMessage(conversationId, text, extraContext, imagePath)) {
+    for await (const chunk of this.sendMessage(
+      conversationId,
+      text,
+      extraContext,
+      imagePath,
+      audioPath,
+    )) {
       if (chunk.kind === 'token') {
         content += chunk.delta;
       }
@@ -324,6 +343,9 @@ export class MockEngine implements LitertLmEngine {
   ): Promise<void> {
     void reason;
     await this.approveToolCall(conversationId, toolCallId, false);
+    const pending = this.pendingTools.get(toolCallId);
+    pending?.resolveResult?.(null);
+    this.pendingTools.delete(toolCallId);
   }
 
   async submitToolResult(

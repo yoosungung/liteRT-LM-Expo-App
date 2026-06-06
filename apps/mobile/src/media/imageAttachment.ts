@@ -2,6 +2,7 @@ import type { MessageAttachment } from 'litertlm-native';
 
 import type { ModelId } from '../models/manifest';
 import { getManifestEntry } from '../models/manifest';
+import { normalizeMultimodalTurnText } from './audioAttachment';
 
 export const defaultImagePrompt = 'Describe this image.';
 
@@ -15,16 +16,12 @@ export function modelSupportsImage(modelId: ModelId | string): boolean {
 
 export function normalizeUserTurnText(
   text: string,
-  options: { hasImage: boolean },
+  options: { hasImage: boolean; hasAudio?: boolean },
 ): string | null {
-  const trimmed = text.trim();
-  if (trimmed) {
-    return trimmed;
-  }
-  if (options.hasImage) {
-    return defaultImagePrompt;
-  }
-  return null;
+  return normalizeMultimodalTurnText(text, {
+    hasImage: options.hasImage,
+    hasAudio: options.hasAudio ?? false,
+  });
 }
 
 export function buildUserMessageAttachments(imageUri?: string): MessageAttachment[] | undefined {

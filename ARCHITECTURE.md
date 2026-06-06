@@ -134,6 +134,16 @@ LLM은 수백 MB~수 GB RAM을 점유한다. iOS/Android는 백그라운드·메
 - Skill import URL fetch는 **HTTPS only**. import·JS skill의 네트워크는 §1.1 추론 오프라인 규칙과 별도(사용자-initiated)이며, **추론 중 외부 API 호출을 skill이 암묵적으로 허용하지 않는다** — `compatibility`·승인 정책으로 opt-in.
 - Native intent skill(share, open URL 등)은 §1.10 approval 정책을 따른다.
 
+### 1.15 MCP (Phase 4+)
+
+- **MCP server 등록·enable은 사용자가 명시적으로** 수행한다. 서버 URL·tool cache는 기기 로컬에 저장한다.
+- MCP transport는 **Streamable HTTP** (`https://` only). SSE-only·stdio endpoint는 Phase 4 범위 밖.
+- **추론·tool 선택은 온디바이스** (§1.1). MCP server 네트워크 호출은 **모델이 MCP tool을 invoke한 뒤 execute 단계**에서만 허용한다.
+- MCP tool schema는 **system prompt catalog**에 주입한다 (Skills catalog와 유사; §2.12). 전체 JSON Schema body는 invoke 시 native/JS registry에 등록된 tool definition으로 전달한다.
+- MCP tool 이름은 **`mcp:{serverId}:{toolName}`** namespace를 사용한다. native `@Tool`·JS built-in·skill name과 충돌하지 않는다.
+- MCP tool 중 side-effect가 있는 호출은 §1.10 approval 정책을 따른다. server metadata에 risk hint가 없으면 **unknown MCP tool은 approval required** (보수적 default).
+- MCP 연결 실패·timeout은 모델 tool loop에 **error result**로 반환한다. 추론 자체를 중단하지 않는다.
+
 ### 1.13 테스트·TDD (Test-First)
 
 로직 변경·신규 기능은 **테스트 선행(TDD)** 을 기본으로 한다. 수동 E2E·스모크 스크립트만으로 완료를 인정하지 않는다.
@@ -151,7 +161,7 @@ LLM은 수백 MB~수 GB RAM을 점유한다. iOS/Android는 백그라운드·메
 | 대상 | 요구 | 실행 |
 |------|------|------|
 | `packages/litertlm-native` JS/TS (Mock, batcher, config, types) | **단위·통합 테스트 필수** | `pnpm litertlm-native test` |
-| `apps/mobile` 순수 로직 (`src/agent`, `src/models`, `src/storage`, `src/benchmark`, `src/skills`) | **단위 테스트 필수** | `pnpm mobile test` |
+| `apps/mobile` 순수 로직 (`src/agent`, `src/models`, `src/storage`, `src/benchmark`, `src/skills`, `src/mcp`) | **단위 테스트 필수** | `pnpm mobile test` |
 | `apps/mobile` RN 컴포넌트 | **렌더·상호작용 테스트** (Wave T5+) | `pnpm mobile test` |
 | ARCHITECTURE §1 계약 (§1.7 batching, §1.8 verify, §1.10 approval, §1.12 lifecycle) | **회귀 테스트 1건 이상** | 해당 패키지 `test` |
 | Kotlin/Swift bridge | JS Mock 통합 + (선택) Robolectric/XCTest | Wave T8 |
@@ -602,6 +612,48 @@ interface SkillParser {
 - **Kind detection**: default `text`; body 또는 frontmatter가 `run_js`를 지시하면 `javascript` (Wave 2).
 - **Persistence**: `@react-native-async-storage/async-storage` — `InstalledSkill[]` JSON (구현 시).
 - PromptTemplateEngine §2.4: `buildSystemInstruction(session, skills?: SkillRef[])`.
+
+### 2.12 MCP (Phase 4+)
+
+```typescript
+interface McpServerConfig {
+  id: string;              // kebab-case, user-facing key
+  displayName: string;
+  url: string;             // https:// Streamable HTTP endpoint
+  enabled: boolean;
+  installedAt: number;
+}
+
+interface McpToolDefinition {
+  name: string;            // server-local name
+  namespacedName: string;  // mcp:{serverId}:{name}
+  description: string;
+  inputSchema: Record<string, unknown>;  // JSON Schema subset
+  serverId: string;
+}
+
+interface McpServerRegistry {
+  register(config: Omit<McpServerConfig, 'installedAt'>): void;
+  unregister(id: string): boolean;
+  list(): McpServerConfig[];
+  listEnabled(): McpServerConfig[];
+  get(id: string): McpServerConfig | undefined;
+  setEnabled(id: string, enabled: boolean): boolean;
+  setTools(serverId: string, tools: McpToolDefinition[]): void;
+  listEnabledTools(): McpToolDefinition[];
+}
+
+interface McpClient {
+  connect(url: string): Promise<void>;
+  listTools(): Promise<Omit<McpToolDefinition, 'namespacedName' | 'serverId'>[]>;
+  callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+  disconnect(): Promise<void>;
+}
+```
+
+- **Catalog**: `formatMcpToolCatalog(servers, tools)` — PromptTemplateEngine merge (Wave 2).
+- **Persistence**: AsyncStorage `McpServerConfig[]` + cached tools (구현 시 `McpStore`).
+- **Mock**: `MockMcpClient` — Wave 1 kickoff; live `StreamableHttpMcpClient` — Wave 2.
 
 ### 2.10 Lifecycle 시퀀스 (참고)
 

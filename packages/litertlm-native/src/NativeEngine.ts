@@ -194,6 +194,7 @@ export class NativeEngine implements LitertLmEngine {
     text: string,
     extraContext?: Record<string, unknown>,
     imagePath?: string,
+    _audioPath?: string,
   ): AsyncIterable<StreamPart> {
     const queue: StreamPart[] = [];
     let pendingResolve: (() => void) | null = null;
@@ -274,9 +275,16 @@ export class NativeEngine implements LitertLmEngine {
     text: string,
     extraContext?: Record<string, unknown>,
     imagePath?: string,
+    audioPath?: string,
   ): Promise<Message> {
     let content = '';
-    for await (const chunk of this.sendMessage(conversationId, text, extraContext, imagePath)) {
+    for await (const chunk of this.sendMessage(
+      conversationId,
+      text,
+      extraContext,
+      imagePath,
+      audioPath,
+    )) {
       if (chunk.kind === 'token') {
         content += chunk.delta;
       }

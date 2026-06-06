@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { AppState, Platform, StyleSheet, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -10,9 +11,48 @@ import { resolveEngineMode } from 'litertlm-native';
 
 import { getAgentRuntime } from '../src/agent/AgentRuntime';
 import { mapAppState } from '../src/agent/InferenceCoordinator';
+import { SecureHfTokenStore, setDefaultHfTokenProvider } from '../src/auth/hfToken';
+import { setHfTokenProvider } from '../src/models/ModelManager';
+import { parseDeepLink } from '../src/linking/deepLink';
+
+function DeepLinkHandler() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleUrl = (url: string) => {
+      const runtime = getAgentRuntime();
+      const route = parseDeepLink(url);
+      if (!route) {
+        return;
+      }
+
+      void runtime.handleDeepLink(url);
+      if (route.type === 'chat' && route.sessionId) {
+        router.push(`/(tabs)/chat/${route.sessionId}`);
+      }
+    };
+
+    void Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleUrl(url);
+      }
+    });
+
+    const sub = Linking.addEventListener('url', (event) => {
+      handleUrl(event.url);
+    });
+    return () => sub.remove();
+  }, [router]);
+
+  return null;
+}
 
 export default function RootLayout() {
   useEffect(() => {
+    const secureStore = new SecureHfTokenStore();
+    setDefaultHfTokenProvider(secureStore);
+    setHfTokenProvider(secureStore);
+
     const runtime = getAgentRuntime();
     if (resolveEngineMode() === 'mock') {
       void runtime.initialize();
@@ -29,6 +69,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AgentProvider>
         <JsSkillHostProvider>
+          <DeepLinkHandler />
           <View style={styles.root}>
           <StatusBar style="auto" />
           <Stack
@@ -43,7 +84,7 @@ export default function RootLayout() {
           {__DEV__ ? (
             <View style={styles.devBadge} pointerEvents="none">
               <Text style={styles.devBadgeText}>
-                {Platform.OS} · mock · Phase 1
+                {Platform.OS} · mock · Phase 4
               </Text>
             </View>
           ) : null}

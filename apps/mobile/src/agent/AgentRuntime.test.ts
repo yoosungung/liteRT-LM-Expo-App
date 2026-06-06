@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
 import { MockEngine, type ConversationConfig } from 'litertlm-native';
 
 import { AgentRuntime, type SendUserMessageOptions } from './AgentRuntime';
+import { McpStore } from '../mcp/McpStore';
 
 async function collectStream(
   runtime: AgentRuntime,
@@ -26,6 +27,10 @@ class ConfigCapturingMockEngine extends MockEngine {
 }
 
 describe('AgentRuntime integration', () => {
+  beforeEach(async () => {
+    await new McpStore().clear();
+  });
+
   it('sendUserMessage completes mock 1-turn chat', async () => {
     const runtime = new AgentRuntime(new MockEngine());
     const session = await runtime.createSession({ title: 'Test' });
@@ -201,5 +206,55 @@ description: Summarizes topics using concise bullet points.
     expect(text).toContain('I see the image you shared');
     const stored = await runtime.sessionStore.getSession(session.id);
     expect(stored?.messages.at(-2)?.attachments?.[0]?.uri).toBe('file:///tmp/mock-image.jpg');
+  });
+
+  it('includes MCP catalog in system instruction when MCP servers are synced', async () => {
+    const engine = new ConfigCapturingMockEngine();
+    const runtime = new AgentRuntime(engine);
+    await runtime.registerMcpServer({
+      id: 'weather',
+      displayName: 'Weather MCP',
+      url: 'https://mcp.example.com/weather',
+      enabled: true,
+    });
+    await runtime.syncMcpServer('weather');
+
+    const session = await runtime.createSession();
+    expect(engine.lastConversationConfig?.systemInstruction).toContain('## MCP Tools (Connected)');
+    expect(engine.lastConversationConfig?.systemInstruction).toContain('mcp:weather:get_weather');
+  });
+
+  it('sendUserMessage with audioPath uses mock audio response', async () => {
+    const runtime = new AgentRuntime(new MockEngine());
+    const session = await runtime.createSession();
+    const chunks = await collectStream(runtime, session.id, '', {
+      audioPath: '/tmp/mock-audio.m4a',
+      audioUri: 'file:///tmp/mock-audio.m4a',
+    });
+
+    const text = chunks
+      .filter((c) => c.type === 'token')
+      .map((c) => (c.type === 'token' ? c.text : ''))
+      .join('');
+
+    expect(text).toContain('I heard the audio clip');
+    const stored = await runtime.sessionStore.getSession(session.id);
+    expect(stored?.messages.at(-2)?.attachments?.[0]?.uri).toBe('file:///tmp/mock-audio.m4a');
+  });
+
+  it('schedules chat reminder when notifications are enabled', async () => {
+    const runtime = new AgentRuntime(new MockEngine());
+    await runtime.notificationPreferences.setEnabled(true);
+    const session = await runtime.createSession({ title: 'Reminder test' });
+
+    const id = await runtime.scheduleSessionReminder(
+      session.id,
+      'Continue chat',
+      'Your coach skill is ready.',
+      'fitness-coach',
+    );
+
+    expect(id).toBe(`chat-${session.id}`);
+    expect(runtime.getChatDeepLink(session.id, 'fitness-coach')).toContain('litertlm://chat/');
   });
 });

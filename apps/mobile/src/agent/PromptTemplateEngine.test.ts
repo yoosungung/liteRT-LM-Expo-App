@@ -53,6 +53,34 @@ describe('PromptTemplateEngine', () => {
     expect(instruction).not.toContain('## Agent Skills');
   });
 
+  it('appends MCP tool catalog when enabled servers exist (§1.15)', () => {
+    const instruction = engine.buildSystemInstruction(
+      { id: 's1', messages: [] },
+      {
+        mcpServers: [
+          {
+            id: 'weather',
+            displayName: 'Weather MCP',
+            url: 'https://mcp.example.com/weather',
+            enabled: true,
+            installedAt: 1,
+          },
+        ],
+        mcpTools: [
+          {
+            name: 'get_weather',
+            namespacedName: 'mcp:weather:get_weather',
+            description: 'Weather lookup.',
+            inputSchema: { type: 'object' },
+            serverId: 'weather',
+          },
+        ],
+      },
+    );
+    expect(instruction).toContain('## MCP Tools (Connected)');
+    expect(instruction).toContain('**mcp:weather:get_weather**: Weather lookup.');
+  });
+
   it('buildExtraContext sets enable_thinking when thinking is true', () => {
     expect(engine.buildExtraContext({ thinking: true })).toEqual({ enable_thinking: true });
     expect(engine.buildExtraContext({})).toEqual({});

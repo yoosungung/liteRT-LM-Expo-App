@@ -84,6 +84,7 @@ Expo dev client + LiteRT-LM + Gemma 4(E2B/E4B) **Agent Chat** 앱 구현 순서.
 - [x] 2.3 live — `openUrl` approval E2E ✅ iOS iPhone 16e · Android `liteRTLM_E2B` (manual 2026-06-06)
 - [x] Phase 2 S4 — KV persist/hibernate + Snapshot UI + Smart Eviction
 - [x] Phase 2 S4 iOS live E2E — iPhone 16e: build + hibernate/restore ✅ (manual 2026-06-06)
+- [x] Phase 2 S4 Android live E2E — `liteRTLM_E2B` AVD: hibernate/restore ✅ (manual 2026-06-06)
 
 ### 작업표
 
@@ -225,6 +226,7 @@ Phase 3 작업(예: `SKILL.md` parser)은 ROADMAP 항목마다 **테스트 파�
 - [x] 3.3 JS skills WebView runner
 - [x] 3.4 Native intent tools
 - [x] 3.5 Ask Image multimodal
+- [x] Phase 3 S4 live E2E — iOS·Android intent tools + Ask Image ✅ (manual 2026-06-06)
 
 | # | 작업 | Wave |
 |---|------|------|
@@ -243,14 +245,33 @@ Phase 3 작업(예: `SKILL.md` parser)은 ROADMAP 항목마다 **테스트 파�
 
 **목표:** MCP, 알림, polish.
 
-| # | 작업 |
-|---|------|
-| 4.1 | MCP client (Streamable HTTP) — ARCHITECTURE §1.1 준수 |
-| 4.2 | Local notifications + skill deep link |
-| 4.3 | Hugging Face OAuth (Gallery 패턴) — `HF_TOKEN` 대안, optional |
-| 4.4 | App Store / Play 내부 테스트 배포 |
-| 4.5 | Audio input (Gemma 4 E2B audio) — 기기·모델 검증 후 |
-| 4.6 | **Predictive warm-up** — Notification Extension / App Intent pre-warm | optional |
+**구현 계획:** [.references/phase4-plan.md](./.references/phase4-plan.md)  
+**전제:** Phase 3 완료 ✅ · TDD T0–T6 ✅ · **순방향 TDD 필수**
+
+### Kickoff 체크리스트
+
+- [x] Phase 4 계획 문서 (`phase4-plan.md`)
+- [x] ARCHITECTURE §1.15 MCP 계약 + §2.12 스키마
+- [x] `src/mcp/` 스켈레톤 — `McpServerRegistry`, `validateMcpUrl`, `mcpToolCatalog`, `MockMcpClient`
+- [x] Wave 1 Red→Green — `validateMcpUrl.test.ts`, `McpServerRegistry.test.ts`, `mcpToolCatalog.test.ts`, `MockMcpClient.test.ts`
+- [x] 4.1 Streamable HTTP `McpClient` + Connected tab UI
+- [x] 4.1 AgentRuntime MCP registry + PromptTemplateEngine catalog merge
+- [x] 4.2 Local notifications + skill deep link
+- [x] 4.3 HF OAuth token store + authorize URL (optional runtime wiring)
+- [x] 4.4 Store internal test EAS profiles
+- [x] 4.5 Audio input attachment + mock multimodal path
+- [x] 4.6 Predictive warm-up coordinator + deep link handler
+
+| # | 작업 | Wave |
+|---|------|------|
+| 4.1 | MCP client (Streamable HTTP) — ARCHITECTURE §1.15 | 1–2 |
+| 4.2 | Local notifications + skill deep link | 3 |
+| 4.3 | Hugging Face OAuth — `HF_TOKEN` 대안 | 4 (optional) |
+| 4.4 | App Store / Play 내부 테스트 배포 | 4 (optional) |
+| 4.5 | Audio input (Gemma 4 E2B audio) | 4 (optional) |
+| 4.6 | Predictive warm-up — Notification Extension / App Intent | 4 (optional) |
+
+**레퍼런스:** [.references/gallery-agent-skills.md](./.references/gallery-agent-skills.md) MCP 섹션
 
 ---
 
@@ -310,11 +331,16 @@ Phase 3 작업(예: `SKILL.md` parser)은 ROADMAP 항목마다 **테스트 파�
 7. ~~Phase 2 S3 Android live E2E~~ ✅ — `liteRTLM_E2B` AVD (2026-06-06)
 8. ~~Phase 2 S4~~ ✅ — KV persist/hibernate stack + Snapshot UI + Smart Eviction (2026-06-06)
 9. ~~Phase 2 S4 iOS live E2E~~ ✅ — iPhone 16e: build + hibernate/restore (2026-06-06)
-10. ~~**TDD Wave T0–T6**~~ ✅ — Vitest/Jest + CI + 레거시 회귀 + mock-smoke 흡수 (2026-06-06)
-11. ~~**Phase 3 kickoff**~~ ✅ — `phase3-plan.md` + §1.14/§2.11 + `SkillParser`/`SkillRegistry` (2026-06-06)
-12. ~~**Phase 3 S1**~~ ✅ — skill catalog merge + `/skill-name` invoke (2026-06-06)
-13. ~~**Phase 3 S2**~~ ✅ — Skills tab + URL import + AsyncStorage persist (2026-06-06)
-14. ~~**Phase 3 S3**~~ ✅ — JS skills WebView + `run_js` tool + bundled `hash-demo` (2026-06-06)
-15. ~~**Phase 3 S4**~~ ✅ — Native intent tools + Ask Image multimodal (2026-06-06)
-16. **TDD T7 (선택)** — Maestro `.maestro/flows/mock-chat.yaml` on device
-17. **TDD T8 (선택)** — Kotlin `ConversationConfigJson` JUnit
+10. ~~Phase 2 S4 Android live E2E~~ ✅ — `liteRTLM_E2B` AVD: hibernate/restore (2026-06-06)
+11. ~~**TDD Wave T0–T6**~~ ✅ — Vitest/Jest + CI + 레거시 회귀 + mock-smoke 흡수 (2026-06-06)
+12. ~~**Phase 3 kickoff**~~ ✅ — `phase3-plan.md` + §1.14/§2.11 + `SkillParser`/`SkillRegistry` (2026-06-06)
+13. ~~**Phase 3 S1**~~ ✅ — skill catalog merge + `/skill-name` invoke (2026-06-06)
+14. ~~**Phase 3 S2**~~ ✅ — Skills tab + URL import + AsyncStorage persist (2026-06-06)
+15. ~~**Phase 3 S3**~~ ✅ — JS skills WebView + `run_js` tool + bundled `hash-demo` (2026-06-06)
+16. ~~**Phase 3 S4**~~ ✅ — Native intent tools + Ask Image multimodal (2026-06-06)
+17. ~~**Phase 3 S4 live E2E**~~ ✅ — iOS·Android intent tools + Ask Image (2026-06-06)
+18. ~~**Phase 4 kickoff**~~ ✅ — `phase4-plan.md` + §1.15/§2.12 + `McpServerRegistry`/`MockMcpClient` (2026-06-06)
+19. ~~**Phase 4 S1**~~ ✅ — 4.1–4.6 TDD (MCP, notifications, HF OAuth, audio, EAS, warm-up) (2026-06-06)
+20. **Phase 4 live E2E** — manual MCP server + notification tap (optional)
+21. **TDD T7 (선택)** — Maestro `.maestro/flows/mock-chat.yaml` on device
+22. **TDD T8 (선택)** — Kotlin `ConversationConfigJson` JUnit

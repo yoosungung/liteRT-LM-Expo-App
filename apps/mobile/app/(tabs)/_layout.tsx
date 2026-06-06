@@ -30,6 +30,13 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="connected"
+        options={{
+          title: 'Connected',
+          tabBarLabel: 'Connected',
+        }}
+      />
+      <Tabs.Screen
         name="benchmark"
         options={{
           title: 'Benchmark',

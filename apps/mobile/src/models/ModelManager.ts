@@ -1,6 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { File } from 'expo-file-system';
 import type { Backend } from 'litertlm-native';
+
+import { resolveHfDownloadToken, type HfTokenProvider, MemoryHfTokenProvider, getDefaultHfTokenProvider } from '../auth/hfToken';
 
 import {
   getManifestEntry,
@@ -27,10 +30,24 @@ function hubUrl(entry: ModelManifestEntry): string {
 }
 
 function readHfToken(): string | undefined {
+  // Sync fallback for tests that stub env only.
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
     ?.env;
-  // Expo inlines only EXPO_PUBLIC_* into the JS bundle (babel-preset-expo).
   return env?.EXPO_PUBLIC_HF_TOKEN ?? env?.HF_TOKEN;
+}
+
+let hfTokenProvider: HfTokenProvider = getDefaultHfTokenProvider();
+
+export function setHfTokenProvider(provider: HfTokenProvider): void {
+  hfTokenProvider = provider;
+}
+
+async function resolveDownloadToken(): Promise<string | undefined> {
+  const envToken = readHfToken()?.trim();
+  if (envToken) {
+    return envToken;
+  }
+  return resolveHfDownloadToken(hfTokenProvider, () => undefined);
 }
 
 function computeProgress(bytesWritten: number, totalBytes: number, manifestSize: number): number {
@@ -128,7 +145,7 @@ export class ModelManager {
     onProgress?: (update: ModelDownloadProgress) => void,
   ): Promise<ModelInstallState> {
     const entry = getManifestEntry(id);
-    const token = readHfToken();
+    const token = (await resolveDownloadToken()) ?? readHfToken();
     if (!token) {
       return this.saveState({
         id,

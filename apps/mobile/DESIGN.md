@@ -34,6 +34,8 @@ apps/mobile/
 │   │   ├── PromptTemplateEngine.ts   # §1.9
 │   │   ├── StreamChunk.ts
 │   │   └── tools/          # Phase 2+ JS tools
+│   ├── skills/             # Phase 3 Agent Skills
+│   ├── mcp/                # Phase 4 MCP registry + client
 │   ├── models/
 │   │   ├── ModelManager.ts
 │   │   ├── manifest.ts     # gemma-4-e2b, e4b + sha256
@@ -61,6 +63,7 @@ apps/mobile/
 | Models | 1 | 다운로드/삭제, backend 선택 |
 | Settings | 2 | sampler, thinking; **"메모리 확보"** → hibernate |
 | Skills | 3 | SKILL.md import |
+| Connected (MCP) | 4 | MCP server URL 등록·enable |
 | Benchmark | 2 | 간단 perf 측정 |
 
 ---
@@ -289,6 +292,19 @@ Mock: `@react-native-async-storage/async-storage/jest/async-storage-mock`, `lite
 | ✅ | `src/agent/tools/filterToolsByAllowed.ts` | `filterToolsByAllowed.test.ts` | `allowed-tools` frontmatter filter; `run_js` keep |
 | ✅ | `src/media/imageAttachment.ts` | `imageAttachment.test.ts` | model image gate; image-only prompt default |
 | ✅ | `AgentRuntime.ts` | `AgentRuntime.test.ts` | mock multimodal `imagePath` turn |
+
+### 10.4 Phase 4 신규 모듈 (순방향 TDD)
+
+| ✅ | 예정 소스 | 테스트 (선행) | 핵심 케이스 |
+|----|-----------|---------------|-------------|
+| ✅ | `src/mcp/validateMcpUrl.ts` | `validateMcpUrl.test.ts` | HTTPS only; kebab-case id; namespaced tool name |
+| ✅ | `src/mcp/McpServerRegistry.ts` | `McpServerRegistry.test.ts` | register; duplicate reject; enable/disable; namespaced tools |
+| ✅ | `src/mcp/mcpToolCatalog.ts` | `mcpToolCatalog.test.ts` | catalog format; disabled server exclusion |
+| ✅ | `src/mcp/mock/MockMcpClient.ts` | `MockMcpClient.test.ts` | connect; listTools; callTool mock result |
+| | `PromptTemplateEngine.ts` | `PromptTemplateEngine.test.ts` | MCP catalog append (§1.15) |
+| | `AgentRuntime.ts` | `AgentRuntime.test.ts` | mock MCP tool execute round-trip |
+| | `StreamableHttpMcpClient.ts` | `StreamableHttpMcpClient.test.ts` | tools/list + tools/call (mock fetch) |
+| | `McpStore.ts` | `McpStore.test.ts` | AsyncStorage persist; corrupt JSON |
 
 ---
 

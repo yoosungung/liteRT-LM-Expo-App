@@ -90,10 +90,15 @@ export interface ConversationConfig {
   automaticToolCalling?: boolean;
 }
 
-export interface MessageAttachment {
-  type: 'image';
-  uri: string;
-}
+export type MessageAttachment =
+  | {
+      type: 'image';
+      uri: string;
+    }
+  | {
+      type: 'audio';
+      uri: string;
+    };
 
 export interface Message {
   id: string;

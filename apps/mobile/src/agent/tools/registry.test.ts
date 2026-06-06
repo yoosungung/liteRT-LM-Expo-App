@@ -34,4 +34,18 @@ describe('ToolRegistry', () => {
     const registry = new ToolRegistry();
     await expect(registry.execute('unknown', {})).rejects.toThrow('Unknown tool');
   });
+
+  it('unregisterByPrefix removes MCP namespaced tools', () => {
+    const registry = new ToolRegistry();
+    registry.register(
+      async () => ({ ok: true }),
+      {
+        name: 'mcp:weather:get_weather',
+        description: 'Weather',
+        parametersJsonSchema: {},
+      },
+    );
+    registry.unregisterByPrefix('mcp:weather:');
+    expect(registry.get('mcp:weather:get_weather')).toBeUndefined();
+  });
 });

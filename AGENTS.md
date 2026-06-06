@@ -58,7 +58,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 
 ## 3. Status
 
-**Phase 3 완료 (2026-06-06).** S1–S4 ✅ · intent tools + Ask Image · **Phase 4** 대기.
+**Phase 4 S1 완료 (2026-06-06).** MCP·알림·HF OAuth·audio·EAS internal-test·warm-up ✅
 
 | 항목 | 상태 |
 |------|------|
@@ -89,6 +89,7 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 2 S3 Android live E2E | **완료** — `liteRTLM_E2B` AVD (8GB): E2B, tools, `openUrl` approval, Stop, Benchmark (manual 2026-06-06) |
 | Phase 2 S4 | **완료** — KV snapshot metadata + message replay fallback, Smart Eviction, Snapshot UI, Idle→Hibernate |
 | Phase 2 S4 iOS live E2E | **완료** — iPhone **16e** Simulator: build, hibernate/restore, restoring UI (manual 2026-06-06) |
+| Phase 2 S4 Android live E2E | **완료** — `liteRTLM_E2B` AVD: hibernate/restore, restoring UI (manual 2026-06-06) |
 | TDD T0–T6 | **완료** — `pnpm test` 103건 (Vitest+Jest) · CI · mock-smoke 흡수 |
 | Phase 3 kickoff | **완료** — `phase3-plan.md`, `SkillParser`, `SkillRegistry` + tests |
 | Phase 3 S1 | **완료** — `skillCatalog`, PromptTemplateEngine merge, AgentRuntime invoke |
@@ -96,5 +97,8 @@ This file provides guidance to AI coding assistants (Claude Code, Codex, Gemini,
 | Phase 3 S3 | **완료** — `run_js` tool, `JsSkillRunner`, `JsSkillHost`, bundled `hash-demo` |
 | Phase 3 S3 live E2E | **완료** — iOS·Android `hash-demo` / `run_js` (manual 2026-06-06) |
 | Phase 3 S4 | **완료** — intent tools (share/clipboard), Ask Image (`Content.ImageFile`) |
+| Phase 3 S4 live E2E | **완료** — iOS·Android intent tools + camera/gallery Ask Image (manual 2026-06-06) |
+**Phase 4 S1 (2026-06-06).** 4.1–4.6 TDD 구현 ✅ · live MCP E2E는 manual 보조.
 
-다음: **Phase 4** — MCP client (optional).
+| Phase 4 kickoff | **완료** — `phase4-plan.md`, §1.15/§2.12, `McpServerRegistry`, `MockMcpClient` + tests |
+| Phase 4 S1 | **완료** — MCP client/store/catalog, Connected tab, notifications, HF OAuth, audio, EAS internal-test, warm-up |

@@ -18,6 +18,7 @@ export default function SettingsScreen() {
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [temperature, setTemperature] = useState(String(DEFAULT_SAMPLER.temperature));
   const [topK, setTopK] = useState(String(DEFAULT_SAMPLER.topK));
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useFocusEffect(
@@ -25,10 +26,11 @@ export default function SettingsScreen() {
       let active = true;
       const run = async () => {
         const prefs = runtime.agentPreferences;
-        const [auto, thinking, sampler] = await Promise.all([
+        const [auto, thinking, sampler, notifications] = await Promise.all([
           prefs.getAutomaticToolCalling(),
           prefs.getThinkingEnabled(),
           prefs.getSampler(),
+          runtime.notificationPreferences.getEnabled(),
         ]);
         if (!active) {
           return;
@@ -37,6 +39,7 @@ export default function SettingsScreen() {
         setThinkingEnabled(thinking);
         setTemperature(String(sampler.temperature ?? DEFAULT_SAMPLER.temperature));
         setTopK(String(sampler.topK ?? DEFAULT_SAMPLER.topK));
+        setNotificationsEnabled(notifications);
         setLoading(false);
       };
       void run();
@@ -54,6 +57,11 @@ export default function SettingsScreen() {
   const toggleThinking = async (value: boolean) => {
     setThinkingEnabled(value);
     await runtime.agentPreferences.setThinkingEnabled(value);
+  };
+
+  const toggleNotifications = async (value: boolean) => {
+    setNotificationsEnabled(value);
+    await runtime.notificationPreferences.setEnabled(value);
   };
 
   const saveSampler = async (nextTemperature: string, nextTopK: string) => {
@@ -119,6 +127,29 @@ export default function SettingsScreen() {
         <Text style={styles.hint}>
           Applied on next conversation open. Defaults: {DEFAULT_SAMPLER.temperature} /{' '}
           {DEFAULT_SAMPLER.topK}
+        </Text>
+      </View>
+
+      <Text style={styles.sectionTitle}>Connected</Text>
+      <View style={styles.row}>
+        <View style={styles.rowText}>
+          <Text style={styles.label}>Local notifications</Text>
+          <Text style={styles.hint}>
+            Schedule chat reminders with deep links (`litertlm://chat/...`). Requires dev client rebuild.
+          </Text>
+        </View>
+        <Switch
+          value={notificationsEnabled}
+          onValueChange={(value) => void toggleNotifications(value)}
+          disabled={loading}
+        />
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.label}>Hugging Face access</Text>
+        <Text style={styles.hint}>
+          Dev: `EXPO_PUBLIC_HF_TOKEN` in `.env.local`. Runtime: Hugging Face OAuth token in secure
+          storage (Phase 4.3). OAuth client id wiring is optional for local download testing.
         </Text>
       </View>
 

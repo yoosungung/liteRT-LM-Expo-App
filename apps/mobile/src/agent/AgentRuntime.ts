@@ -53,11 +53,21 @@ import { RUN_JS_TOOL_DEFINITION } from '../skills/runJsTool';
 import { SkillRegistry } from '../skills/registry';
 import { SkillStore } from '../skills/SkillStore';
 import type { InstalledSkill, ParsedSkill, SkillParseResult } from '../skills/types';
+import { LocalNotificationService, MemoryNotificationScheduler } from '../notifications/LocalNotificationService';
+import { NotificationPreferences } from '../notifications/NotificationPreferences';
+import { PredictiveWarmUpCoordinator } from '../linking/PredictiveWarmUpCoordinator';
+import { buildChatDeepLink } from '../linking/deepLink';
 import {
-  buildUserMessageAttachments,
-  modelSupportsImage,
-  normalizeUserTurnText,
-} from '../media/imageAttachment';
+  buildUserMessageAttachments as buildMultimodalAttachments,
+  modelSupportsAudio,
+  normalizeMultimodalTurnText,
+} from '../media/audioAttachment';
+import { createMockMcpClient } from '../mcp/mock/MockMcpClient';
+import { McpService } from '../mcp/McpService';
+import { McpStore, type StoredMcpServer } from '../mcp/McpStore';
+import { createStreamableHttpMcpClient } from '../mcp/StreamableHttpMcpClient';
+import type { McpClient, McpServerConfig, McpServerRegisterInput } from '../mcp/types';
+import { modelSupportsImage } from '../media/imageAttachment';
 import { filterToolsByAllowed } from './tools/filterToolsByAllowed';
 import { ToolRegistry } from './tools/registry';
 import type { JsToolHandler, ToolPolicy } from './tools/types';
@@ -71,6 +81,8 @@ export interface SessionOptions {
 export interface SendUserMessageOptions {
   imageUri?: string;
   imagePath?: string;
+  audioUri?: string;
+  audioPath?: string;
 }
 
 interface ApprovalGate {
@@ -95,6 +107,11 @@ export class AgentRuntime {
   readonly toolRegistry = new ToolRegistry();
   readonly skillRegistry = new SkillRegistry();
   readonly skillStore = new SkillStore();
+  readonly mcpService: McpService;
+  readonly mcpStore = new McpStore();
+  readonly notificationPreferences = new NotificationPreferences();
+  readonly notificationService: LocalNotificationService;
+  readonly warmUpCoordinator: PredictiveWarmUpCoordinator;
   readonly coordinator: InferenceCoordinator;
 
   private engine: LitertLmEngine;
@@ -114,6 +131,8 @@ export class AgentRuntime {
   private wakeStream: (() => void) | null = null;
   private skillsHydrated = false;
   private skillsHydratePromise: Promise<void> | null = null;
+  private mcpHydrated = false;
+  private mcpHydratePromise: Promise<void> | null = null;
   private activeJsSkillBySession = new Map<string, string>();
   private currentToolSessionId: string | null = null;
   private jsSkillRunner: JsSkillRunner;
@@ -121,9 +140,16 @@ export class AgentRuntime {
   constructor(engine?: LitertLmEngine) {
     this.engineConfig = defaultMockConfig();
     this.engine = engine ?? createEngine(this.engineConfig);
+    this.mcpService = new McpService(() =>
+      resolveEngineMode(this.engineConfig) === 'mock'
+        ? createMockMcpClient()
+        : createStreamableHttpMcpClient(),
+    );
+    this.notificationService = new LocalNotificationService(new MemoryNotificationScheduler());
     this.coordinator = new InferenceCoordinator(this.engine, {
       isGenerating: () => this.generatingSessions.size > 0,
     });
+    this.warmUpCoordinator = PredictiveWarmUpCoordinator.fromRuntime(this);
     this.coordinator.setLastEngineConfig(this.engineConfig);
     this.applyHibernationPolicy();
     this.jsSkillRunner = createJsSkillRunner({
@@ -194,6 +220,85 @@ export class AgentRuntime {
 
   registerSkill(skill: ParsedSkill): void {
     this.skillRegistry.register(skill);
+  }
+
+  async registerMcpServer(input: McpServerRegisterInput): Promise<void> {
+    await this.ensureMcpLoaded();
+    this.mcpService.registerServer(input);
+    await this.persistMcpServers();
+  }
+
+  async ensureMcpLoaded(): Promise<void> {
+    if (this.mcpHydrated) {
+      return;
+    }
+    if (this.mcpHydratePromise) {
+      return this.mcpHydratePromise;
+    }
+
+    this.mcpHydratePromise = this.hydrateMcpServers();
+    try {
+      await this.mcpHydratePromise;
+    } finally {
+      this.mcpHydratePromise = null;
+    }
+  }
+
+  listMcpServers(): McpServerConfig[] {
+    return this.mcpService.registry.list();
+  }
+
+  async syncMcpServer(serverId: string, client?: McpClient): Promise<number> {
+    await this.ensureMcpLoaded();
+    const count = await this.mcpService.syncServerTools(serverId, client);
+    this.bindMcpTools(serverId);
+    await this.persistMcpServers();
+    return count;
+  }
+
+  async setMcpServerEnabled(serverId: string, enabled: boolean): Promise<boolean> {
+    await this.ensureMcpLoaded();
+    const updated = this.mcpService.registry.setEnabled(serverId, enabled);
+    if (updated) {
+      this.bindMcpTools(serverId);
+      await this.persistMcpServers();
+    }
+    return updated;
+  }
+
+  async removeMcpServer(serverId: string): Promise<boolean> {
+    await this.ensureMcpLoaded();
+    this.toolRegistry.unregisterByPrefix(`mcp:${serverId}:`);
+    const removed = this.mcpService.registry.unregister(serverId);
+    if (removed) {
+      await this.persistMcpServers();
+    }
+    return removed;
+  }
+
+  async scheduleSessionReminder(sessionId: string, title: string, body: string, skillName?: string) {
+    if (!(await this.notificationPreferences.getEnabled())) {
+      return null;
+    }
+    return this.notificationService.scheduleChatReminder({
+      sessionId,
+      title,
+      body,
+      skillName,
+    });
+  }
+
+  getChatDeepLink(sessionId: string, skillName?: string): string {
+    return buildChatDeepLink(sessionId, skillName);
+  }
+
+  async handleDeepLink(url: string): Promise<boolean> {
+    const { parseDeepLink } = await import('../linking/deepLink');
+    const route = parseDeepLink(url);
+    if (!route) {
+      return false;
+    }
+    return this.warmUpCoordinator.handleRoute(route);
   }
 
   importSkillFromMarkdown(content: string, options?: ParseSkillOptions): SkillParseResult {
@@ -295,14 +400,46 @@ export class AgentRuntime {
     await this.skillStore.save(this.skillRegistry.list());
   }
 
+  private async hydrateMcpServers(): Promise<void> {
+    const stored = await this.mcpStore.load();
+    this.mcpService.registry.hydrate(stored);
+    for (const server of stored) {
+      if (server.enabled && server.tools.length > 0) {
+        this.bindMcpTools(server.id);
+      }
+    }
+    this.mcpHydrated = true;
+  }
+
+  private async persistMcpServers(): Promise<void> {
+    await this.mcpStore.save(this.mcpService.registry.exportStoredServers());
+  }
+
+  private bindMcpTools(serverId: string): void {
+    this.mcpService.bindToolsToRegistry(serverId, {
+      registerMcpTool: (definition, execute) => {
+        this.registerTool(execute, definition, {
+          riskLevel: definition.riskLevel,
+          requiresApproval: definition.requiresApproval,
+        });
+      },
+      unregisterMcpToolsForServer: (id) => {
+        this.toolRegistry.unregisterByPrefix(`mcp:${id}:`);
+      },
+    });
+  }
+
   private async buildSystemInstructionForSession(
     session: StoredSession,
     activeSkillName?: string,
   ): Promise<string> {
     await this.ensureSkillsLoaded();
+    await this.ensureMcpLoaded();
     const activeSkill = activeSkillName ? this.skillRegistry.get(activeSkillName) : undefined;
     return this.promptEngine.buildSystemInstruction(session, {
       skills: this.skillRegistry.listEnabledRefs(),
+      mcpServers: this.mcpService.registry.listEnabled(),
+      mcpTools: this.mcpService.registry.listEnabledTools(),
       activeSkill: activeSkill
         ? {
             name: activeSkill.frontmatter.name,
@@ -620,7 +757,8 @@ export class AgentRuntime {
     options: SendUserMessageOptions = {},
   ): AsyncIterable<StreamChunk> {
     const hasImage = Boolean(options.imagePath);
-    const messageText = normalizeUserTurnText(text, { hasImage });
+    const hasAudio = Boolean(options.audioPath);
+    const messageText = normalizeMultimodalTurnText(text, { hasImage, hasAudio });
     if (!messageText) {
       return;
     }
@@ -634,6 +772,11 @@ export class AgentRuntime {
 
     if (hasImage && !modelSupportsImage(session.modelId)) {
       yield { type: 'error', message: 'Selected model does not support image input.' };
+      return;
+    }
+
+    if (hasAudio && !modelSupportsAudio(session.modelId)) {
+      yield { type: 'error', message: 'Selected model does not support audio input.' };
       return;
     }
 
@@ -656,7 +799,10 @@ export class AgentRuntime {
       id: `${sessionId}-user-${Date.now()}`,
       role: 'user',
       content: userText,
-      attachments: buildUserMessageAttachments(options.imageUri),
+      attachments: buildMultimodalAttachments({
+        imageUri: options.imageUri,
+        audioUri: options.audioUri,
+      }),
       timestamp: Date.now(),
     };
     await this.sessionStore.appendMessage(sessionId, userMessage);
@@ -671,6 +817,7 @@ export class AgentRuntime {
     const thinkingEnabled = await this.agentPreferences.getThinkingEnabled();
     const extraContext = this.promptEngine.buildExtraContext({ thinking: thinkingEnabled });
     const imagePath = options.imagePath;
+    const audioPath = options.audioPath;
 
     this.streamChunkQueue = [];
     const streamState = { done: false, error: null as Error | null };
@@ -726,6 +873,7 @@ export class AgentRuntime {
           nativeTurn,
           extraContext,
           imagePath,
+          audioPath,
         )) {
           if (abort.signal.aborted) {
             streamState.error = new Error('Generation aborted');
@@ -894,6 +1042,13 @@ export class AgentRuntime {
     try {
       const result = await this.toolRegistry.execute(toolCall.name, args);
       await this.engine.submitToolResult(sessionId, toolCall.id, JSON.stringify(result));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.engine.submitToolResult(
+        sessionId,
+        toolCall.id,
+        JSON.stringify({ error: message }),
+      );
     } finally {
       this.currentToolSessionId = null;
     }

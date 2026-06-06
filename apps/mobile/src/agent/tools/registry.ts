@@ -44,4 +44,12 @@ export class ToolRegistry {
     }
     return tool.handler(args);
   }
+
+  unregisterByPrefix(prefix: string): void {
+    for (const name of [...this.tools.keys()]) {
+      if (name.startsWith(prefix)) {
+        this.tools.delete(name);
+      }
+    }
+  }
 }
