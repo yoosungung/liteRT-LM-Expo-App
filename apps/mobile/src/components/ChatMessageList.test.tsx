@@ -43,4 +43,38 @@ describe('ChatMessageList', () => {
     expect(screen.getByText(/Thinking/)).toBeTruthy();
     expect(screen.getByText('Answer')).toBeTruthy();
   });
+
+  it('renders collapsed tool call block for assistant messages', () => {
+    render(
+      <ChatMessageList
+        messages={[
+          {
+            id: '2',
+            role: 'assistant',
+            content: 'It is noon.',
+            toolCalls: [{ id: 't1', name: 'getCurrentTime', argumentsJson: '{}' }],
+            timestamp: 2,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText(/Tool · getCurrentTime/)).toBeTruthy();
+    expect(screen.queryByText('{}')).toBeNull();
+  });
+
+  it('collapses long assistant answers by default', () => {
+    render(
+      <ChatMessageList
+        messages={[
+          {
+            id: '2',
+            role: 'assistant',
+            content: 'a'.repeat(500),
+            timestamp: 2,
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByText(/Show full answer \(500 chars\)/)).toBeTruthy();
+  });
 });

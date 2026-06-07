@@ -33,6 +33,7 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [streamingText, setStreamingText] = useState('');
   const [streamingThinking, setStreamingThinking] = useState('');
+  const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
   const [busy, setBusy] = useState(false);
   const [preparePhase, setPreparePhase] = useState<ChatPreparePhase | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -147,6 +148,7 @@ export default function ChatScreen() {
     setError(null);
     setStreamingText('');
     setStreamingThinking('');
+    setStreamingToolCalls([]);
 
     try {
       for await (const chunk of runtime.sendUserMessage(id!, input, { imageUri, imagePath })) {
@@ -157,6 +159,12 @@ export default function ChatScreen() {
           setStreamingText((prev) => prev + chunk.text);
         } else if (chunk.type === 'thinking') {
           setStreamingThinking((prev) => prev + chunk.text);
+        } else if (chunk.type === 'tool_call') {
+          setStreamingToolCalls((prev) =>
+            prev.some((call) => call.id === chunk.toolCall.id)
+              ? prev
+              : [...prev, chunk.toolCall],
+          );
         } else if (chunk.type === 'tool_approval_required') {
           await waitForApprovalUi(chunk.toolCall, chunk.riskLevel);
         } else if (chunk.type === 'error') {
@@ -166,6 +174,7 @@ export default function ChatScreen() {
         } else if (chunk.type === 'done') {
           setStreamingText('');
           setStreamingThinking('');
+          setStreamingToolCalls([]);
           await loadSession();
         }
       }
@@ -251,6 +260,7 @@ export default function ChatScreen() {
             messages={session.messages}
             streamingText={streamingText}
             streamingThinking={streamingThinking}
+            streamingToolCalls={streamingToolCalls}
           />
         </View>
         <ChatInput

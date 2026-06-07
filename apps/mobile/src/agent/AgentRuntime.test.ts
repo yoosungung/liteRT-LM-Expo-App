@@ -44,6 +44,16 @@ describe('AgentRuntime integration', () => {
     expect(stored?.messages.some((m) => m.role === 'assistant')).toBe(true);
   });
 
+  it('persists toolCalls on assistant message for mock read tools', async () => {
+    const runtime = new AgentRuntime(new MockEngine());
+    const session = await runtime.createSession();
+    await collectStream(runtime, session.id, 'what time is it?');
+
+    const stored = await runtime.sessionStore.getSession(session.id);
+    const assistant = stored?.messages.find((message) => message.role === 'assistant');
+    expect(assistant?.toolCalls?.some((call) => call.name === 'getCurrentTime')).toBe(true);
+  });
+
   it('tool approval flow approves openUrl in mock mode', async () => {
     const engine = new MockEngine();
     const runtime = new AgentRuntime(engine);

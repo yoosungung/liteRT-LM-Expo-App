@@ -813,6 +813,15 @@ export class AgentRuntime {
 
     let assistantText = '';
     let assistantThinking = '';
+    const assistantToolCalls: ToolCall[] = [];
+    const assistantToolCallIds = new Set<string>();
+    const recordToolCall = (toolCall: ToolCall) => {
+      if (assistantToolCallIds.has(toolCall.id)) {
+        return;
+      }
+      assistantToolCallIds.add(toolCall.id);
+      assistantToolCalls.push(toolCall);
+    };
     const nativeTurn = this.promptEngine.toNativeUserTurn(userText, session.messages);
     const thinkingEnabled = await this.agentPreferences.getThinkingEnabled();
     const extraContext = this.promptEngine.buildExtraContext({ thinking: thinkingEnabled });
@@ -862,9 +871,22 @@ export class AgentRuntime {
       if (event.conversationId !== sessionId) {
         return;
       }
+      recordToolCall(event.toolCall);
       pushChunk({ type: 'tool_call', toolCall: event.toolCall });
       void this.handleManualToolCall(sessionId, event.toolCall, pushChunk);
     });
+
+    const messageCompleteSub = this.engine.addListener(
+      'onMessageComplete',
+      (event: { conversationId: string; message: Message }) => {
+        if (event.conversationId !== sessionId) {
+          return;
+        }
+        for (const toolCall of event.message.toolCalls ?? []) {
+          recordToolCall(toolCall);
+        }
+      },
+    );
 
     const streamTask = (async () => {
       try {
@@ -906,6 +928,8 @@ export class AgentRuntime {
             assistantText += chunk.text;
           } else if (chunk.type === 'thinking') {
             assistantThinking += chunk.text;
+          } else if (chunk.type === 'tool_call') {
+            recordToolCall(chunk.toolCall);
           }
           yield chunk;
         }
@@ -923,6 +947,7 @@ export class AgentRuntime {
         role: 'assistant',
         content: assistantText,
         thinking: assistantThinking.trim() ? assistantThinking : undefined,
+        toolCalls: assistantToolCalls.length > 0 ? assistantToolCalls : undefined,
         timestamp: Date.now(),
       };
       await this.sessionStore.appendMessage(sessionId, assistantMessage);
@@ -934,6 +959,7 @@ export class AgentRuntime {
       approvalSub.remove();
       runJsSub.remove();
       toolSub.remove();
+      messageCompleteSub.remove();
       this.streamChunkQueue = [];
       this.wakeStream = null;
       this.abortControllers.delete(sessionId);

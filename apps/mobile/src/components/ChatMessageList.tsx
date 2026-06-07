@@ -1,23 +1,35 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { FlatList, Image, StyleSheet, Text, View } from 'react-native';
-import type { Message } from 'litertlm-native';
+import type { Message, ToolCall } from 'litertlm-native';
 
+import {
+  createChatScrollState,
+  decideChatScrollAction,
+  type ChatScrollState,
+} from './chatScrollBehavior';
+import { CollapsibleMessageBody } from './CollapsibleMessageBody';
 import { ThinkingBlock } from './ThinkingBlock';
+import { ToolCallBlock } from './ToolCallBlock';
 
 interface ChatMessageListProps {
   messages: Message[];
   streamingText?: string;
   streamingThinking?: string;
+  streamingToolCalls?: ToolCall[];
 }
 
 export function ChatMessageList({
   messages,
   streamingText,
   streamingThinking,
+  streamingToolCalls,
 }: ChatMessageListProps) {
   const listRef = useRef<FlatList<Message>>(null);
+  const scrollStateRef = useRef<ChatScrollState>(createChatScrollState());
 
-  const data = streamingText || streamingThinking
+  const isStreaming = Boolean(streamingText || streamingThinking);
+
+  const data = isStreaming
     ? [
         ...messages,
         {
@@ -25,6 +37,7 @@ export function ChatMessageList({
           role: 'assistant' as const,
           content: streamingText ?? '',
           thinking: streamingThinking,
+          toolCalls: streamingToolCalls,
           timestamp: Date.now(),
         },
       ]
@@ -39,9 +52,54 @@ export function ChatMessageList({
     });
   }, [data.length]);
 
+  const scrollToStreamingStart = useCallback(() => {
+    const index = data.length - 1;
+    if (index < 0) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({ index, viewPosition: 0, animated: false });
+    });
+  }, [data.length]);
+
+  const applyScrollAction = useCallback(
+    (action: ReturnType<typeof decideChatScrollAction>['action']) => {
+      if (action === 'scrollToBottom') {
+        scrollToBottom(false);
+      } else if (action === 'scrollToStreamingStart') {
+        scrollToStreamingStart();
+      }
+    },
+    [scrollToBottom, scrollToStreamingStart],
+  );
+
+  const syncScroll = useCallback(
+    (options?: { isInitialLayout?: boolean }) => {
+      const lastMessage = messages.at(-1);
+      const { action, next } = decideChatScrollAction(scrollStateRef.current, {
+        messagesLength: messages.length,
+        isStreaming,
+        isInitialLayout: options?.isInitialLayout,
+        lastMessageRole: lastMessage?.role,
+      });
+      scrollStateRef.current = next;
+      applyScrollAction(action);
+    },
+    [applyScrollAction, isStreaming, messages],
+  );
+
   useEffect(() => {
-    scrollToBottom(false);
-  }, [messages.length, streamingText, streamingThinking, scrollToBottom]);
+    syncScroll();
+  }, [messages.length, isStreaming, syncScroll]);
+
+  const handleScrollToIndexFailed = useCallback(
+    (info: { index: number }) => {
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToIndex({ index: info.index, viewPosition: 0, animated: false });
+      });
+    },
+    [],
+  );
 
   return (
     <FlatList
@@ -63,6 +121,12 @@ export function ChatMessageList({
               defaultExpanded={item.id === 'streaming'}
             />
           ) : null}
+          {item.role === 'assistant' && item.toolCalls?.length ? (
+            <ToolCallBlock
+              toolCalls={item.toolCalls}
+              defaultExpanded={item.id === 'streaming'}
+            />
+          ) : null}
           {item.attachments?.map((attachment, index) =>
             attachment.type === 'image' ? (
               <Image
@@ -73,14 +137,15 @@ export function ChatMessageList({
               />
             ) : null,
           )}
-          <Text style={item.role === 'user' ? styles.userText : styles.assistantText}>
-            {item.content}
-            {item.id === 'streaming' && item.content ? '▍' : ''}
-          </Text>
+          <CollapsibleMessageBody
+            content={item.content}
+            textStyle={item.role === 'user' ? styles.userText : styles.assistantText}
+            isStreaming={item.id === 'streaming'}
+          />
         </View>
       )}
-      onContentSizeChange={() => scrollToBottom(false)}
-      onLayout={() => scrollToBottom(false)}
+      onLayout={() => syncScroll({ isInitialLayout: true })}
+      onScrollToIndexFailed={handleScrollToIndexFailed}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
     />
